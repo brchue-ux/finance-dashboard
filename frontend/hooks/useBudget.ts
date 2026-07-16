@@ -1,0 +1,89 @@
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+
+export interface BudgetEnvelope {
+  id: string;
+  name: string;
+  monthlyTarget: number;
+  allocated: number;
+  spent: number;
+  remaining: number;
+  overBudget: boolean;
+  categoryRules: string[];
+  sortOrder: number;
+}
+
+export interface BudgetSummary {
+  totalSpent: number;
+  totalAllocated: number;
+  totalIncome: number;
+  remaining: number;
+  saved: number;
+}
+
+export interface BudgetResponse {
+  year: number;
+  month: number;
+  envelopes: BudgetEnvelope[];
+  transactions: Transaction[];
+  summary: BudgetSummary;
+  bankConnections: { institution: string; status: string; lastSyncedAt: number | null }[];
+}
+
+export interface Transaction {
+  id: string;
+  date: string;
+  description: string;
+  merchantName: string | null;
+  amount: number;
+  category: string | null;
+  pending: number;
+}
+
+export function useBudget(year: number, month: number) {
+  return useQuery({
+    queryKey: ["budget", year, month],
+    queryFn: () =>
+      api.get<BudgetResponse>(`/api/budget?year=${year}&month=${month}`),
+    refetchInterval: 15 * 60 * 1000, // 15 min polling
+  });
+}
+
+export function useSyncBudget() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post("/api/plaid/sync"),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["budget"] }),
+  });
+}
+
+export function useLLMCards(view: "budget" | "portfolio") {
+  return useQuery({
+    queryKey: ["llm-cards", view],
+    queryFn: () =>
+      api.post<{ cards: LLMCard[]; lastAnalyzedAt: number; cached: boolean }>(
+        "/api/llm/analyze",
+        { view }
+      ),
+    staleTime: Infinity, // managed by server-side cache logic
+  });
+}
+
+export function useForceReanalyze(view: "budget" | "portfolio") {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post("/api/llm/analyze", { view, force: true }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["llm-cards", view] }),
+  });
+}
+
+export interface LLMCard {
+  type: "insight" | "action";
+  title: string;
+  body: string;
+  reasoning: string;
+  envelope_from?: string;
+  envelope_to?: string;
+  amount?: number;
+}
