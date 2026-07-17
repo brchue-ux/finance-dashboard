@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  index,
   integer,
   real,
   sqliteTable,
@@ -154,6 +155,80 @@ export const portfolioTransactions = sqliteTable("portfolio_transactions", {
   amount: real("amount").notNull(),
   accountType: text("account_type").notNull(),
   createdAt: integer("created_at").notNull(),
+});
+
+// ── price_alerts ──────────────────────────────────────────────────────────────
+export const priceAlerts = sqliteTable(
+  "price_alerts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    ticker: text("ticker").notNull(),
+    holdingId: text("holding_id").references(() => holdings.id),
+    label: text("label"),
+    conditionType: text("condition_type").notNull(), // "price_above" | "price_below" | "pct_change_up" | "pct_change_down"
+    // v2: "ma_cross_above" | "ma_cross_below" | "rsi_above" | "rsi_below" | "volume_spike"
+    threshold: real("threshold").notNull(), // dollar price OR decimal pct (0.03 = 3%)
+    conditionParams: text("condition_params"), // JSON: extra params for v2 conditions, NULL for simple threshold alerts
+    extendedHours: integer("extended_hours").notNull().default(0), // 0 = regular session only, 1 = include pre/post market
+    status: text("status").notNull().default("active"), // "active" | "triggered" | "paused" | "expired"
+    cooldownSeconds: integer("cooldown_seconds"), // NULL = one-time fire (default)
+    nextCheckAt: integer("next_check_at"), // Unix timestamp; NULL = check every poll
+    lastTriggeredAt: integer("last_triggered_at"),
+    triggerCount: integer("trigger_count").notNull().default(0),
+    source: text("source").notNull().default("native"), // "native" | "tradingview"
+    notificationChannels: text("notification_channels").notNull().default('["in_app"]'), // JSON array
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    expiresAt: integer("expires_at"),
+  },
+  (t) => [
+    index("idx_price_alerts_ticker_status").on(t.ticker, t.status), // polling query
+    index("idx_price_alerts_user_status").on(t.userId, t.status), // user alert list
+    index("idx_price_alerts_next_check").on(t.nextCheckAt), // cooldown window
+  ]
+);
+
+// ── alert_fires ───────────────────────────────────────────────────────────────
+export const alertFires = sqliteTable(
+  "alert_fires",
+  {
+    id: text("id").primaryKey(),
+    alertId: text("alert_id")
+      .notNull()
+      .references(() => priceAlerts.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    ticker: text("ticker").notNull(),
+    conditionType: text("condition_type").notNull(),
+    threshold: real("threshold").notNull(),
+    triggerPrice: real("trigger_price").notNull(), // actual price at fire time
+    triggerPctChange: real("trigger_pct_change"), // populated for pct_change conditions
+    source: text("source").notNull(), // "native" | "tradingview"
+    firedAt: integer("fired_at").notNull(), // Unix timestamp
+    firedAtBucket: integer("fired_at_bucket").notNull(), // FLOOR(fired_at / 300) * 300 — 5-min dedup bucket
+    deliveredChannels: text("delivered_channels").notNull(), // JSON array
+    readAt: integer("read_at"), // NULL until user marks read
+  },
+  (t) => [
+    uniqueIndex("uq_alert_fires_alert_bucket").on(t.alertId, t.firedAtBucket), // hard DB-level dedup guard
+  ]
+);
+
+// ── price_cache ───────────────────────────────────────────────────────────────
+// Last-known-good prices. Prevents false alerts from null/stale data mid-poll-cycle.
+export const priceCache = sqliteTable("price_cache", {
+  ticker: text("ticker").primaryKey(),
+  regularMarketPrice: real("regular_market_price").notNull(),
+  regularMarketChangePercent: real("regular_market_change_percent"),
+  preMarketPrice: real("pre_market_price"),
+  postMarketPrice: real("post_market_price"),
+  previousClose: real("previous_close"),
+  fetchedAt: integer("fetched_at").notNull(), // Unix timestamp of last successful fetch
+  source: text("source").notNull().default("yahoo"),
 });
 
 // ── tradingview_alerts ────────────────────────────────────────────────────────
