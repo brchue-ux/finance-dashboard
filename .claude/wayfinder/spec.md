@@ -22,7 +22,7 @@ The user is transitioning from a Wealthsimple auto-managed (robo-advisory) portf
 ```
 ┌─────────────────────┐     HTTPS      ┌──────────────────────┐
 │   Expo React Native │ ◄────────────► │  Next.js API Routes  │
-│   (Vercel, free)    │                │  (Railway, $5/mo)    │
+│   (Vercel, free)    │                │ (Railway, ~$15-25/mo)│
 └─────────────────────┘                └──────────┬───────────┘
                                                   │
                           ┌───────────────────────┼────────────────────────┐
@@ -621,7 +621,7 @@ User-configurable preferences (risk posture, savings goals, investment time hori
 
 ### Tool Use
 - **Web search:** Enabled, ungated. Claude uses it when it needs external context (interest rates, earnings news, macro events, ticker-specific news). User can also explicitly request: "search for X." Results rendered inline.
-- **`tradesdontlie` MCP:** Enabled. Claude calls it to query live TradingView indicator data (RSI, MACD, moving averages, volume) on any ticker during advisory sessions. Claude decides when to invoke it based on the advisory context.
+- **Twelve Data MCP (`twelvedata/mcp`):** Enabled (see §5.5). Claude calls it to query live TradingView-equivalent indicator data (RSI, MACD, moving averages, volume) on any ticker during advisory sessions. Claude decides when to invoke it based on the advisory context.
 
 ### Output Structure
 
@@ -825,18 +825,18 @@ NEXT_PUBLIC_API_URL   -- Railway backend base URL
 4. Set all other environment variables in Railway and Vercel
 5. Run `drizzle-kit push` to apply schema to Turso
 6. Run `db/seed.ts` (Railway deploy hook) to create initial user account
-6. **If using Google OAuth for historical import:** Set the Google Cloud project's OAuth consent screen to **Published** status (not Testing). In Testing status, refresh tokens are revoked after 7 days, causing silent `invalid_grant` failures. Alternatively, add your own email to the test user allowlist before running the import.
-7. Connect SnapTrade account (Wealthsimple) via in-app Settings → Connected Accounts
-8. Connect Plaid accounts (RBC, Tangerine, Scotiabank) via in-app Settings → Connected Accounts
-9. Set up TradingView alerts with Railway backend webhook URL + `TRADINGVIEW_WEBHOOK_SECRET` in alert message JSON. **TradingView plan note:** webhooks require at minimum the Essential plan — they are not available on the Free plan.
-10. **Register Railway URL as `redirect_uri` in Plaid dashboard** (required for RBC OAuth flow)
-11. **When custom domain is configured:** update Plaid dashboard `redirect_uri` to production domain
+7. **If using Google OAuth for historical import:** Set the Google Cloud project's OAuth consent screen to **Published** status (not Testing). In Testing status, refresh tokens are revoked after 7 days, causing silent `invalid_grant` failures. Alternatively, add your own email to the test user allowlist before running the import.
+8. Connect SnapTrade account (Wealthsimple) via in-app Settings → Connected Accounts
+9. Connect Plaid accounts (RBC, Tangerine, Scotiabank) via in-app Settings → Connected Accounts
+10. Set up TradingView alerts with Railway backend webhook URL + `TRADINGVIEW_WEBHOOK_SECRET` in alert message JSON. **TradingView plan note:** webhooks require at minimum the Essential plan — they are not available on the Free plan.
+11. **Register Railway URL as `redirect_uri` in Plaid dashboard** (required for RBC OAuth flow)
+12. **When custom domain is configured:** update Plaid dashboard `redirect_uri` to production domain
 
 ### Scale Path
 
 | Layer | Now | At scale |
 |---|---|---|
-| Backend | Railway Starter ($5/mo) | Larger Railway instance → AWS/GCP/Azure (standard Node.js) |
+| Backend | Railway Starter (~$15-25/mo actual) | Larger Railway instance → AWS/GCP/Azure (standard Node.js) |
 | Database | Turso free tier | Neon (Postgres) — change Drizzle dialect + connection string |
 | Auth | Better Auth self-hosted | Unchanged — moves with backend |
 | Frontend | Vercel Hobby | Vercel Pro or self-hosted static |
