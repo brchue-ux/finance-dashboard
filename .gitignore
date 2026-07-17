@@ -9,3 +9,4 @@ dist/
 .turbo/
 handoff-*.md
 .autosync
+.claude/settings.local.json
