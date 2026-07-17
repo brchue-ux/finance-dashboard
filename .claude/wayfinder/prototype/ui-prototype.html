@@ -1,0 +1,2199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Finance Dashboard — UI Prototype</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: #0a0a0f;
+  color: #fff;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+h1 {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 500;
+  color: #888;
+  margin-bottom: 6px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.subtitle {
+  text-align: center;
+  font-size: 13px;
+  color: #555;
+  margin-bottom: 28px;
+}
+
+/* Tab selector */
+.tab-selector {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 32px;
+}
+
+.tab-btn {
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background: transparent;
+  color: #888;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-btn.active {
+  background: #fff;
+  color: #000;
+  border-color: #fff;
+}
+
+/* Theme labels */
+.themes-row {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  margin-bottom: 16px;
+}
+
+.theme-label {
+  width: 375px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #666;
+}
+
+/* Phone mockups row */
+.phones-row {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  align-items: flex-start;
+}
+
+.phone {
+  width: 375px;
+  min-height: 760px;
+  border-radius: 40px;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+  border: 2px solid rgba(255,255,255,0.08);
+  box-shadow: 0 40px 80px rgba(0,0,0,0.6);
+}
+
+/* ─────────────────────────────────────────
+   THEME 1: TERMINAL (Dark Professional)
+───────────────────────────────────────── */
+.theme-terminal {
+  background: #0D1117;
+  color: #E6EDF3;
+  font-family: 'Inter', sans-serif;
+}
+
+.theme-terminal .screen { display: none; }
+.theme-terminal .screen.active { display: block; }
+
+.theme-terminal .status-bar {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 20px 6px;
+  font-size: 11px;
+  color: #8B949E;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.theme-terminal .header {
+  padding: 10px 20px 14px;
+  border-bottom: 1px solid #21262D;
+}
+
+.theme-terminal .header-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #E6EDF3;
+  letter-spacing: -0.02em;
+}
+
+.theme-terminal .header-sub {
+  font-size: 12px;
+  color: #8B949E;
+  margin-top: 2px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.theme-terminal .month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid #21262D;
+}
+
+.theme-terminal .month-nav-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #161B22;
+  border: 1px solid #30363D;
+  color: #8B949E;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.theme-terminal .month-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #E6EDF3;
+}
+
+.theme-terminal .month-net {
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #F85149;
+  font-weight: 500;
+}
+
+.theme-terminal .stats-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1px;
+  background: #21262D;
+  border-bottom: 1px solid #21262D;
+}
+
+.theme-terminal .stat-cell {
+  padding: 12px 14px;
+  background: #0D1117;
+}
+
+.theme-terminal .stat-label {
+  font-size: 10px;
+  color: #8B949E;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.theme-terminal .stat-value {
+  font-size: 16px;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  color: #E6EDF3;
+  margin-top: 3px;
+}
+
+.theme-terminal .stat-value.red { color: #F85149; }
+.theme-terminal .stat-value.green { color: #3FB950; }
+
+.theme-terminal .section-label {
+  padding: 10px 20px 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #8B949E;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.theme-terminal .envelope-item {
+  padding: 10px 20px;
+  border-bottom: 1px solid #161B22;
+}
+
+.theme-terminal .envelope-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.theme-terminal .envelope-name {
+  font-size: 13px;
+  color: #E6EDF3;
+}
+
+.theme-terminal .envelope-amounts {
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #8B949E;
+}
+
+.theme-terminal .envelope-amounts .over {
+  color: #F85149;
+}
+
+.theme-terminal .progress-track {
+  height: 4px;
+  background: #21262D;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.theme-terminal .progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: #3FB950;
+  transition: width 0.5s ease;
+}
+
+.theme-terminal .progress-fill.over {
+  background: #F85149;
+}
+
+.theme-terminal .llm-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  border-top: 1px solid #21262D;
+  border-bottom: 1px solid #21262D;
+  background: #0D1117;
+}
+
+.theme-terminal .llm-timestamp {
+  font-size: 11px;
+  color: #8B949E;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.theme-terminal .llm-timestamp span {
+  color: #3FB950;
+}
+
+.theme-terminal .reanalyze-btn {
+  font-size: 11px;
+  color: #388BFD;
+  font-family: 'JetBrains Mono', monospace;
+  background: none;
+  border: 1px solid #1F6FEB;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.theme-terminal .insight-card {
+  margin: 8px 20px;
+  padding: 10px 14px;
+  background: #161B22;
+  border: 1px solid #21262D;
+  border-left: 3px solid #E3B341;
+  border-radius: 6px;
+}
+
+.theme-terminal .action-card {
+  margin: 8px 20px;
+  padding: 10px 14px;
+  background: #161B22;
+  border: 1px solid #21262D;
+  border-left: 3px solid #388BFD;
+  border-radius: 6px;
+}
+
+.theme-terminal .card-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: 'JetBrains Mono', monospace;
+  color: #8B949E;
+  margin-bottom: 4px;
+}
+
+.theme-terminal .card-text {
+  font-size: 12px;
+  color: #E6EDF3;
+  line-height: 1.5;
+}
+
+.theme-terminal .card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.theme-terminal .card-approve {
+  font-size: 11px;
+  padding: 4px 12px;
+  background: #238636;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.theme-terminal .card-dismiss {
+  font-size: 11px;
+  padding: 4px 12px;
+  background: #21262D;
+  border: 1px solid #30363D;
+  border-radius: 4px;
+  color: #8B949E;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.theme-terminal .tx-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 20px;
+  border-bottom: 1px solid #161B22;
+}
+
+.theme-terminal .tx-name {
+  font-size: 12px;
+  color: #E6EDF3;
+}
+
+.theme-terminal .tx-cat {
+  font-size: 10px;
+  color: #8B949E;
+  margin-top: 1px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.theme-terminal .tx-amount {
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #F85149;
+  font-weight: 500;
+}
+
+/* Portfolio - Terminal */
+.theme-terminal .ticker-tape {
+  background: #161B22;
+  padding: 8px 20px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #8B949E;
+  overflow: hidden;
+  white-space: nowrap;
+  border-bottom: 1px solid #21262D;
+}
+
+.theme-terminal .ticker-tape .up { color: #3FB950; }
+.theme-terminal .ticker-tape .dn { color: #F85149; }
+
+.theme-terminal .portfolio-value {
+  padding: 16px 20px;
+  border-bottom: 1px solid #21262D;
+}
+
+.theme-terminal .pv-label {
+  font-size: 10px;
+  color: #8B949E;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.theme-terminal .pv-number {
+  font-size: 28px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: #E6EDF3;
+  letter-spacing: -0.02em;
+  margin-top: 4px;
+}
+
+.theme-terminal .pv-change {
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #3FB950;
+  margin-top: 4px;
+}
+
+.theme-terminal .chart-area {
+  height: 120px;
+  padding: 10px 20px;
+  position: relative;
+  border-bottom: 1px solid #21262D;
+}
+
+.theme-terminal .chart-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.theme-terminal .holding-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 11px 20px;
+  border-bottom: 1px solid #161B22;
+}
+
+.theme-terminal .holding-ticker {
+  font-size: 14px;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  color: #E6EDF3;
+}
+
+.theme-terminal .holding-name {
+  font-size: 11px;
+  color: #8B949E;
+  margin-top: 1px;
+}
+
+.theme-terminal .holding-right {
+  text-align: right;
+}
+
+.theme-terminal .holding-value {
+  font-size: 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 500;
+  color: #E6EDF3;
+}
+
+.theme-terminal .holding-pnl {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 1px;
+}
+
+.theme-terminal .holding-pnl.up { color: #3FB950; }
+.theme-terminal .holding-pnl.dn { color: #F85149; }
+
+/* Alerts - Terminal */
+.theme-terminal .alert-item {
+  padding: 12px 20px;
+  border-bottom: 1px solid #161B22;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.theme-terminal .alert-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+.theme-terminal .alert-dot.red { background: #F85149; }
+.theme-terminal .alert-dot.yellow { background: #E3B341; }
+.theme-terminal .alert-dot.green { background: #3FB950; }
+
+.theme-terminal .alert-ticker {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  color: #E6EDF3;
+}
+
+.theme-terminal .alert-condition {
+  font-size: 12px;
+  color: #8B949E;
+  margin-top: 2px;
+}
+
+.theme-terminal .alert-meta {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #8B949E;
+  margin-top: 3px;
+}
+
+.theme-terminal .alert-analyze {
+  font-size: 11px;
+  color: #388BFD;
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 4px;
+  cursor: pointer;
+}
+
+/* Bottom nav - Terminal */
+.theme-terminal .bottom-nav {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  background: #0D1117;
+  border-top: 1px solid #21262D;
+  padding-bottom: 8px;
+}
+
+.theme-terminal .nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 4px 4px;
+  cursor: pointer;
+  position: relative;
+}
+
+.theme-terminal .nav-icon {
+  font-size: 18px;
+  margin-bottom: 3px;
+}
+
+.theme-terminal .nav-label {
+  font-size: 10px;
+  color: #8B949E;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.theme-terminal .nav-item.active .nav-label {
+  color: #3FB950;
+}
+
+.theme-terminal .nav-badge {
+  position: absolute;
+  top: 6px;
+  right: 28px;
+  background: #F85149;
+  color: #fff;
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ─────────────────────────────────────────
+   THEME 2: CLEAN (Modern Fintech)
+───────────────────────────────────────── */
+.theme-clean {
+  background: #F8FAFC;
+  color: #1E293B;
+}
+
+.theme-clean .screen { display: none; }
+.theme-clean .screen.active { display: block; }
+
+.theme-clean .status-bar {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 20px 6px;
+  font-size: 11px;
+  color: #94A3B8;
+}
+
+.theme-clean .header {
+  padding: 10px 20px 14px;
+  background: #fff;
+  border-bottom: 1px solid #F1F5F9;
+}
+
+.theme-clean .header-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0F172A;
+  letter-spacing: -0.03em;
+}
+
+.theme-clean .header-sub {
+  font-size: 12px;
+  color: #94A3B8;
+  margin-top: 2px;
+}
+
+.theme-clean .month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: #fff;
+}
+
+.theme-clean .month-nav-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #F1F5F9;
+  border: none;
+  color: #64748B;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.theme-clean .month-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0F172A;
+}
+
+.theme-clean .month-net {
+  font-size: 14px;
+  color: #EF4444;
+  font-weight: 600;
+}
+
+.theme-clean .stats-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #F8FAFC;
+}
+
+.theme-clean .stat-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.theme-clean .stat-label {
+  font-size: 10px;
+  color: #94A3B8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+}
+
+.theme-clean .stat-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0F172A;
+  margin-top: 4px;
+  letter-spacing: -0.02em;
+}
+
+.theme-clean .stat-value.red { color: #EF4444; }
+.theme-clean .stat-value.green { color: #10B981; }
+
+.theme-clean .section-label {
+  padding: 12px 20px 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94A3B8;
+  font-weight: 600;
+  background: #F8FAFC;
+}
+
+.theme-clean .envelope-list {
+  background: #fff;
+  margin: 0 16px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.theme-clean .envelope-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid #F8FAFC;
+}
+
+.theme-clean .envelope-item:last-child {
+  border-bottom: none;
+}
+
+.theme-clean .envelope-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.theme-clean .envelope-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1E293B;
+}
+
+.theme-clean .envelope-amounts {
+  font-size: 13px;
+  color: #64748B;
+}
+
+.theme-clean .envelope-amounts .over {
+  color: #EF4444;
+  font-weight: 600;
+}
+
+.theme-clean .progress-track {
+  height: 6px;
+  background: #F1F5F9;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.theme-clean .progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #6366F1, #8B5CF6);
+}
+
+.theme-clean .progress-fill.over {
+  background: linear-gradient(90deg, #EF4444, #F97316);
+}
+
+.theme-clean .llm-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: #F8FAFC;
+}
+
+.theme-clean .llm-timestamp {
+  font-size: 12px;
+  color: #94A3B8;
+}
+
+.theme-clean .llm-timestamp span {
+  color: #10B981;
+  font-weight: 500;
+}
+
+.theme-clean .reanalyze-btn {
+  font-size: 12px;
+  color: #6366F1;
+  background: #EEF2FF;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.theme-clean .insight-card {
+  margin: 6px 16px;
+  padding: 12px 16px;
+  background: #FFFBEB;
+  border: 1px solid #FDE68A;
+  border-radius: 12px;
+}
+
+.theme-clean .action-card {
+  margin: 6px 16px;
+  padding: 12px 16px;
+  background: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  border-radius: 12px;
+}
+
+.theme-clean .card-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94A3B8;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.theme-clean .card-text {
+  font-size: 13px;
+  color: #1E293B;
+  line-height: 1.5;
+}
+
+.theme-clean .card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.theme-clean .card-approve {
+  font-size: 12px;
+  padding: 6px 16px;
+  background: #6366F1;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.theme-clean .card-dismiss {
+  font-size: 12px;
+  padding: 6px 16px;
+  background: #F1F5F9;
+  border: none;
+  border-radius: 8px;
+  color: #64748B;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.theme-clean .tx-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 11px 16px;
+  background: #fff;
+  border-bottom: 1px solid #F8FAFC;
+}
+
+.theme-clean .tx-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1E293B;
+}
+
+.theme-clean .tx-cat {
+  font-size: 11px;
+  color: #94A3B8;
+  margin-top: 2px;
+}
+
+.theme-clean .tx-amount {
+  font-size: 14px;
+  font-weight: 600;
+  color: #EF4444;
+}
+
+/* Portfolio - Clean */
+.theme-clean .ticker-tape {
+  background: #fff;
+  padding: 10px 20px;
+  font-size: 12px;
+  color: #64748B;
+  overflow: hidden;
+  white-space: nowrap;
+  border-bottom: 1px solid #F1F5F9;
+}
+
+.theme-clean .ticker-tape .up { color: #10B981; font-weight: 500; }
+.theme-clean .ticker-tape .dn { color: #EF4444; font-weight: 500; }
+
+.theme-clean .portfolio-value {
+  padding: 20px 20px 16px;
+  background: #fff;
+}
+
+.theme-clean .pv-label {
+  font-size: 11px;
+  color: #94A3B8;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.theme-clean .pv-number {
+  font-size: 32px;
+  font-weight: 800;
+  color: #0F172A;
+  letter-spacing: -0.04em;
+  margin-top: 6px;
+}
+
+.theme-clean .pv-change {
+  font-size: 14px;
+  font-weight: 600;
+  color: #10B981;
+  margin-top: 4px;
+}
+
+.theme-clean .chart-area {
+  height: 120px;
+  padding: 10px 20px;
+  background: #fff;
+  border-bottom: 1px solid #F1F5F9;
+}
+
+.theme-clean .holding-list {
+  background: #fff;
+  margin: 12px 16px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.theme-clean .holding-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #F8FAFC;
+}
+
+.theme-clean .holding-item:last-child { border-bottom: none; }
+
+.theme-clean .holding-ticker {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0F172A;
+}
+
+.theme-clean .holding-name {
+  font-size: 11px;
+  color: #94A3B8;
+  margin-top: 2px;
+}
+
+.theme-clean .holding-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0F172A;
+}
+
+.theme-clean .holding-pnl {
+  font-size: 12px;
+  font-weight: 500;
+  text-align: right;
+  margin-top: 2px;
+}
+
+.theme-clean .holding-pnl.up { color: #10B981; }
+.theme-clean .holding-pnl.dn { color: #EF4444; }
+
+/* Alerts - Clean */
+.theme-clean .alert-item {
+  padding: 14px 16px;
+  background: #fff;
+  margin: 8px 16px;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.theme-clean .alert-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+.theme-clean .alert-dot.red { background: #EF4444; box-shadow: 0 0 6px rgba(239,68,68,0.4); }
+.theme-clean .alert-dot.yellow { background: #F59E0B; }
+.theme-clean .alert-dot.green { background: #10B981; }
+
+.theme-clean .alert-ticker {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0F172A;
+}
+
+.theme-clean .alert-condition {
+  font-size: 13px;
+  color: #64748B;
+  margin-top: 2px;
+}
+
+.theme-clean .alert-meta {
+  font-size: 11px;
+  color: #94A3B8;
+  margin-top: 3px;
+}
+
+.theme-clean .alert-analyze {
+  font-size: 12px;
+  color: #6366F1;
+  font-weight: 500;
+  margin-top: 6px;
+  cursor: pointer;
+}
+
+/* Bottom nav - Clean */
+.theme-clean .bottom-nav {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  background: #fff;
+  border-top: 1px solid #F1F5F9;
+  padding-bottom: 8px;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.06);
+}
+
+.theme-clean .nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 4px 4px;
+  cursor: pointer;
+  position: relative;
+}
+
+.theme-clean .nav-icon {
+  font-size: 20px;
+  margin-bottom: 2px;
+}
+
+.theme-clean .nav-label {
+  font-size: 10px;
+  color: #94A3B8;
+  font-weight: 500;
+}
+
+.theme-clean .nav-item.active .nav-label {
+  color: #6366F1;
+}
+
+.theme-clean .nav-item.active .nav-icon {
+  filter: none;
+}
+
+.theme-clean .nav-badge {
+  position: absolute;
+  top: 6px;
+  right: 24px;
+  background: #EF4444;
+  color: #fff;
+  font-size: 9px;
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+/* ─────────────────────────────────────────
+   THEME 3: GRADIENT (Consumer Dark)
+───────────────────────────────────────── */
+.theme-gradient {
+  background: #13111C;
+  color: #F8FAFC;
+}
+
+.theme-gradient .screen { display: none; }
+.theme-gradient .screen.active { display: block; }
+
+.theme-gradient .status-bar {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 20px 6px;
+  font-size: 11px;
+  color: rgba(248,250,252,0.4);
+}
+
+.theme-gradient .header {
+  padding: 10px 20px 16px;
+}
+
+.theme-gradient .header-title {
+  font-size: 22px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #A78BFA, #60A5FA);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.03em;
+}
+
+.theme-gradient .header-sub {
+  font-size: 12px;
+  color: rgba(248,250,252,0.4);
+  margin-top: 2px;
+}
+
+.theme-gradient .month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px 14px;
+}
+
+.theme-gradient .month-nav-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(248,250,252,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.theme-gradient .month-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #F8FAFC;
+}
+
+.theme-gradient .month-net {
+  font-size: 14px;
+  color: #F87171;
+  font-weight: 600;
+}
+
+.theme-gradient .stats-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  padding: 0 16px 14px;
+}
+
+.theme-gradient .stat-card {
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.theme-gradient .stat-label {
+  font-size: 9px;
+  color: rgba(248,250,252,0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 500;
+}
+
+.theme-gradient .stat-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #F8FAFC;
+  margin-top: 4px;
+  letter-spacing: -0.02em;
+}
+
+.theme-gradient .stat-value.red { color: #F87171; }
+.theme-gradient .stat-value.green { color: #34D399; }
+
+.theme-gradient .section-label {
+  padding: 8px 20px 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(248,250,252,0.35);
+  font-weight: 600;
+}
+
+.theme-gradient .envelope-item {
+  padding: 11px 16px;
+  margin: 4px 16px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+}
+
+.theme-gradient .envelope-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.theme-gradient .envelope-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #F8FAFC;
+}
+
+.theme-gradient .envelope-amounts {
+  font-size: 12px;
+  color: rgba(248,250,252,0.45);
+}
+
+.theme-gradient .envelope-amounts .over {
+  color: #F87171;
+  font-weight: 600;
+}
+
+.theme-gradient .progress-track {
+  height: 5px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.theme-gradient .progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #7C3AED, #2563EB);
+}
+
+.theme-gradient .progress-fill.over {
+  background: linear-gradient(90deg, #DC2626, #F97316);
+}
+
+.theme-gradient .llm-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+}
+
+.theme-gradient .llm-timestamp {
+  font-size: 11px;
+  color: rgba(248,250,252,0.4);
+}
+
+.theme-gradient .llm-timestamp span {
+  color: #34D399;
+}
+
+.theme-gradient .reanalyze-btn {
+  font-size: 11px;
+  background: linear-gradient(135deg, #7C3AED, #2563EB);
+  border: none;
+  padding: 5px 14px;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.theme-gradient .insight-card {
+  margin: 5px 16px;
+  padding: 12px 14px;
+  background: rgba(234,179,8,0.1);
+  border: 1px solid rgba(234,179,8,0.25);
+  border-radius: 12px;
+}
+
+.theme-gradient .action-card {
+  margin: 5px 16px;
+  padding: 12px 14px;
+  background: rgba(99,102,241,0.12);
+  border: 1px solid rgba(99,102,241,0.3);
+  border-radius: 12px;
+}
+
+.theme-gradient .card-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(248,250,252,0.4);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.theme-gradient .card-text {
+  font-size: 12px;
+  color: rgba(248,250,252,0.85);
+  line-height: 1.5;
+}
+
+.theme-gradient .card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.theme-gradient .card-approve {
+  font-size: 11px;
+  padding: 5px 14px;
+  background: linear-gradient(135deg, #7C3AED, #2563EB);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.theme-gradient .card-dismiss {
+  font-size: 11px;
+  padding: 5px 14px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  color: rgba(248,250,252,0.5);
+  cursor: pointer;
+}
+
+.theme-gradient .tx-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  margin: 3px 16px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+}
+
+.theme-gradient .tx-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #F8FAFC;
+}
+
+.theme-gradient .tx-cat {
+  font-size: 11px;
+  color: rgba(248,250,252,0.35);
+  margin-top: 2px;
+}
+
+.theme-gradient .tx-amount {
+  font-size: 13px;
+  font-weight: 600;
+  color: #F87171;
+}
+
+/* Portfolio - Gradient */
+.theme-gradient .ticker-tape {
+  background: rgba(255,255,255,0.04);
+  padding: 8px 20px;
+  font-size: 11px;
+  color: rgba(248,250,252,0.45);
+  overflow: hidden;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 4px;
+}
+
+.theme-gradient .ticker-tape .up { color: #34D399; }
+.theme-gradient .ticker-tape .dn { color: #F87171; }
+
+.theme-gradient .portfolio-hero {
+  padding: 20px 20px 16px;
+  background: linear-gradient(180deg, rgba(124,58,237,0.15) 0%, transparent 100%);
+}
+
+.theme-gradient .pv-label {
+  font-size: 10px;
+  color: rgba(248,250,252,0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+}
+
+.theme-gradient .pv-number {
+  font-size: 34px;
+  font-weight: 800;
+  color: #F8FAFC;
+  letter-spacing: -0.04em;
+  margin-top: 6px;
+}
+
+.theme-gradient .pv-change {
+  font-size: 14px;
+  font-weight: 600;
+  color: #34D399;
+  margin-top: 4px;
+}
+
+.theme-gradient .chart-area {
+  height: 120px;
+  padding: 10px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.theme-gradient .holding-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 11px 16px;
+  margin: 4px 16px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+}
+
+.theme-gradient .holding-ticker {
+  font-size: 14px;
+  font-weight: 700;
+  color: #F8FAFC;
+}
+
+.theme-gradient .holding-name {
+  font-size: 11px;
+  color: rgba(248,250,252,0.4);
+  margin-top: 2px;
+}
+
+.theme-gradient .holding-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #F8FAFC;
+}
+
+.theme-gradient .holding-pnl {
+  font-size: 12px;
+  font-weight: 500;
+  text-align: right;
+  margin-top: 2px;
+}
+
+.theme-gradient .holding-pnl.up { color: #34D399; }
+.theme-gradient .holding-pnl.dn { color: #F87171; }
+
+/* Alerts - Gradient */
+.theme-gradient .alert-item {
+  padding: 13px 14px;
+  margin: 6px 16px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 14px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.theme-gradient .alert-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+.theme-gradient .alert-dot.red { background: #F87171; box-shadow: 0 0 8px rgba(248,113,113,0.5); }
+.theme-gradient .alert-dot.yellow { background: #FBBF24; }
+.theme-gradient .alert-dot.green { background: #34D399; }
+
+.theme-gradient .alert-ticker {
+  font-size: 14px;
+  font-weight: 700;
+  color: #F8FAFC;
+}
+
+.theme-gradient .alert-condition {
+  font-size: 12px;
+  color: rgba(248,250,252,0.5);
+  margin-top: 2px;
+}
+
+.theme-gradient .alert-meta {
+  font-size: 11px;
+  color: rgba(248,250,252,0.35);
+  margin-top: 3px;
+}
+
+.theme-gradient .alert-analyze {
+  font-size: 11px;
+  background: linear-gradient(135deg, #7C3AED, #2563EB);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 600;
+  margin-top: 6px;
+  cursor: pointer;
+}
+
+/* Bottom nav - Gradient */
+.theme-gradient .bottom-nav {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  background: rgba(19,17,28,0.95);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding-bottom: 8px;
+}
+
+.theme-gradient .nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 4px 4px;
+  cursor: pointer;
+  position: relative;
+}
+
+.theme-gradient .nav-icon {
+  font-size: 20px;
+  margin-bottom: 2px;
+}
+
+.theme-gradient .nav-label {
+  font-size: 10px;
+  color: rgba(248,250,252,0.35);
+  font-weight: 500;
+}
+
+.theme-gradient .nav-item.active .nav-label {
+  background: linear-gradient(135deg, #A78BFA, #60A5FA);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.theme-gradient .nav-badge {
+  position: absolute;
+  top: 6px;
+  right: 24px;
+  background: #F87171;
+  color: #fff;
+  font-size: 9px;
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+/* Shared scroll content */
+.scroll-content {
+  padding-bottom: 80px;
+  overflow-y: auto;
+  max-height: 700px;
+}
+
+/* Chart SVG shared */
+.chart-svg path { fill: none; stroke-width: 2; }
+.chart-svg .chart-fill { opacity: 0.15; }
+</style>
+</head>
+<body>
+
+<h1>Finance Dashboard UI</h1>
+<p class="subtitle">3 aesthetic directions · tap tabs to switch screens · scroll inside each phone</p>
+
+<!-- Tab selector -->
+<div class="tab-selector">
+  <button class="tab-btn active" onclick="switchTab('budget', this)">💰 Budget</button>
+  <button class="tab-btn" onclick="switchTab('portfolio', this)">📈 Portfolio</button>
+  <button class="tab-btn" onclick="switchTab('alerts', this)">🔔 Alerts</button>
+  <button class="tab-btn" onclick="switchTab('settings', this)">⚙️ Settings</button>
+</div>
+
+<!-- Theme labels -->
+<div class="themes-row">
+  <div class="theme-label">① Terminal</div>
+  <div class="theme-label">② Clean</div>
+  <div class="theme-label">③ Gradient</div>
+</div>
+
+<!-- Phones row -->
+<div class="phones-row">
+
+  <!-- ── PHONE 1: TERMINAL ── -->
+  <div class="phone theme-terminal">
+
+    <!-- BUDGET -->
+    <div class="screen active" id="t1-budget">
+      <div class="status-bar"><span>9:41</span><span>⚡ 87%</span></div>
+      <div class="header">
+        <div class="header-title">Budget</div>
+        <div class="header-sub">JULY_2026.md</div>
+      </div>
+      <div class="month-nav">
+        <div class="month-nav-btn">‹</div>
+        <div class="month-name">July 2026</div>
+        <div class="month-net red">-$420</div>
+        <div class="month-nav-btn">›</div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-cell">
+          <div class="stat-label">Spent</div>
+          <div class="stat-value">$3,240</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">Left</div>
+          <div class="stat-value green">$1,560</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">Saved</div>
+          <div class="stat-value green">$800</div>
+        </div>
+      </div>
+      <div class="scroll-content">
+        <div class="section-label">ENVELOPES</div>
+        <div class="envelope-item">
+          <div class="envelope-header">
+            <span class="envelope-name">Restaurants</span>
+            <span class="envelope-amounts"><span class="over">$420/$400</span></span>
+          </div>
+          <div class="progress-track"><div class="progress-fill over" style="width:105%"></div></div>
+        </div>
+        <div class="envelope-item">
+          <div class="envelope-header">
+            <span class="envelope-name">Groceries</span>
+            <span class="envelope-amounts">$480/$600</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" style="width:80%"></div></div>
+        </div>
+        <div class="envelope-item">
+          <div class="envelope-header">
+            <span class="envelope-name">Transport</span>
+            <span class="envelope-amounts">$120/$300</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" style="width:40%"></div></div>
+        </div>
+        <div class="envelope-item">
+          <div class="envelope-header">
+            <span class="envelope-name">Utilities</span>
+            <span class="envelope-amounts">$210/$220</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" style="width:95%"></div></div>
+        </div>
+        <div class="envelope-item">
+          <div class="envelope-header">
+            <span class="envelope-name">TFSA Investment</span>
+            <span class="envelope-amounts">$500/$500</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" style="width:100%"></div></div>
+        </div>
+        <div class="llm-bar">
+          <span class="llm-timestamp">✦ analyzed <span>2h ago</span></span>
+          <button class="reanalyze-btn">↻ Re-analyze</button>
+        </div>
+        <div class="insight-card">
+          <div class="card-label">⚠ INSIGHT</div>
+          <div class="card-text">Restaurants $20 over budget. 3rd month trending above target.</div>
+        </div>
+        <div class="action-card">
+          <div class="card-label">→ ACTION</div>
+          <div class="card-text">Move $20 from Transport (55% remaining) to cover Restaurants overage?</div>
+          <div class="card-actions">
+            <button class="card-approve">✓ Apply</button>
+            <button class="card-dismiss">✗ Dismiss</button>
+          </div>
+        </div>
+        <div class="section-label">RECENT TRANSACTIONS</div>
+        <div class="tx-item">
+          <div><div class="tx-name">Tim Hortons</div><div class="tx-cat">restaurants</div></div>
+          <div class="tx-amount">-$6.50</div>
+        </div>
+        <div class="tx-item">
+          <div><div class="tx-name">Loblaws</div><div class="tx-cat">groceries</div></div>
+          <div class="tx-amount">-$94.20</div>
+        </div>
+        <div class="tx-item">
+          <div><div class="tx-name">Shell</div><div class="tx-cat">transport</div></div>
+          <div class="tx-amount">-$62.00</div>
+        </div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item active"><div class="nav-icon">💰</div><div class="nav-label">Budget</div></div>
+        <div class="nav-item"><div class="nav-icon">📈</div><div class="nav-label">Portfolio</div></div>
+        <div class="nav-item"><div class="nav-icon">🔔</div><div class="nav-label">Alerts</div><div class="nav-badge">3</div></div>
+        <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">Settings</div></div>
+      </div>
+    </div>
+
+    <!-- PORTFOLIO -->
+    <div class="screen" id="t1-portfolio">
+      <div class="status-bar"><span>9:41</span><span>⚡ 87%</span></div>
+      <div class="ticker-tape">AAPL <span class="up">+0.8%</span> &nbsp; VFV <span class="dn">-0.3%</span> &nbsp; BTC <span class="up">+2.1%</span> &nbsp; MSFT <span class="up">+1.2%</span> &nbsp; GOOG <span class="dn">-0.5%</span></div>
+      <div class="portfolio-value">
+        <div class="pv-label">PORTFOLIO VALUE</div>
+        <div class="pv-number">$48,320</div>
+        <div class="pv-change">+$210 today &nbsp;·&nbsp; +14.2% all-time</div>
+      </div>
+      <div class="chart-area">
+        <svg class="chart-svg" viewBox="0 0 335 100" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="tg1" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#3FB950" stop-opacity="0.3"/>
+              <stop offset="100%" stop-color="#3FB950" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path class="chart-fill" d="M0,80 C40,75 60,70 80,60 C100,50 120,55 140,45 C160,35 180,40 200,30 C220,20 240,25 260,18 C280,12 300,15 335,8 L335,100 L0,100 Z" fill="url(#tg1)"/>
+          <path d="M0,80 C40,75 60,70 80,60 C100,50 120,55 140,45 C160,35 180,40 200,30 C220,20 240,25 260,18 C280,12 300,15 335,8" stroke="#3FB950"/>
+        </svg>
+      </div>
+      <div class="scroll-content">
+        <div class="section-label">HOLDINGS</div>
+        <div class="holding-item">
+          <div><div class="holding-ticker">VFV</div><div class="holding-name">Vanguard S&P 500 ETF</div></div>
+          <div class="holding-right"><div class="holding-value">$18,200</div><div class="holding-pnl dn">-$180 (-1.1%)</div></div>
+        </div>
+        <div class="holding-item">
+          <div><div class="holding-ticker">AAPL</div><div class="holding-name">Apple Inc · TFSA</div></div>
+          <div class="holding-right"><div class="holding-value">$20,340</div><div class="holding-pnl up">+$420 (+8.2%)</div></div>
+        </div>
+        <div class="holding-item">
+          <div><div class="holding-ticker">BTC</div><div class="holding-name">Bitcoin · 0.4 BTC</div></div>
+          <div class="holding-right"><div class="holding-value">$9,780</div><div class="holding-pnl up">+$2,100 (+22%)</div></div>
+        </div>
+        <div class="llm-bar">
+          <span class="llm-timestamp">✦ analyzed <span>6h ago</span></span>
+          <button class="reanalyze-btn">↻ Re-analyze</button>
+        </div>
+        <div class="action-card">
+          <div class="card-label">→ ACTION</div>
+          <div class="card-text">VFV (ETF): aligns with your defensive→self-directed transition. Consider selling to free capital for individual security selection.</div>
+          <div class="card-actions">
+            <button class="card-approve">✓ Noted</button>
+            <button class="card-dismiss">✗ Dismiss</button>
+          </div>
+        </div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item"><div class="nav-icon">💰</div><div class="nav-label">Budget</div></div>
+        <div class="nav-item active"><div class="nav-icon">📈</div><div class="nav-label" style="color:#3FB950">Portfolio</div></div>
+        <div class="nav-item"><div class="nav-icon">🔔</div><div class="nav-label">Alerts</div><div class="nav-badge">3</div></div>
+        <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">Settings</div></div>
+      </div>
+    </div>
+
+    <!-- ALERTS -->
+    <div class="screen" id="t1-alerts">
+      <div class="status-bar"><span>9:41</span><span>⚡ 87%</span></div>
+      <div class="header">
+        <div class="header-title">Alerts <span style="color:#F85149;font-size:14px">[3]</span></div>
+        <div class="header-sub">TRADINGVIEW_WEBHOOKS</div>
+      </div>
+      <div class="scroll-content">
+        <div class="section-label">UNREAD</div>
+        <div class="alert-item">
+          <div class="alert-dot red"></div>
+          <div>
+            <div class="alert-ticker">AAPL</div>
+            <div class="alert-condition">RSI crossed below 30 — Oversold</div>
+            <div class="alert-meta">$198.20 · 14 min ago · 1D chart</div>
+            <div class="alert-analyze">→ Analyze with Claude</div>
+          </div>
+        </div>
+        <div class="alert-item">
+          <div class="alert-dot yellow"></div>
+          <div>
+            <div class="alert-ticker">VFV</div>
+            <div class="alert-condition">Price crossed below 200MA</div>
+            <div class="alert-meta">$112.40 · 2h ago · 1W chart</div>
+            <div class="alert-analyze">→ Analyze with Claude</div>
+          </div>
+        </div>
+        <div class="section-label">EARLIER</div>
+        <div class="alert-item">
+          <div class="alert-dot green"></div>
+          <div>
+            <div class="alert-ticker">BTC</div>
+            <div class="alert-condition">Price target reached — $94,200</div>
+            <div class="alert-meta">$94,200 · 1d ago · 4H chart</div>
+            <div class="alert-analyze">→ Analyze with Claude</div>
+          </div>
+        </div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item"><div class="nav-icon">💰</div><div class="nav-label">Budget</div></div>
+        <div class="nav-item"><div class="nav-icon">📈</div><div class="nav-label">Portfolio</div></div>
+        <div class="nav-item active"><div class="nav-icon">🔔</div><div class="nav-label" style="color:#3FB950">Alerts</div></div>
+        <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">Settings</div></div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="screen" id="t1-settings">
+      <div class="status-bar"><span>9:41</span><span>⚡ 87%</span></div>
+      <div class="header">
+        <div class="header-title">Settings</div>
+        <div class="header-sub">CONFIG.json</div>
+      </div>
+      <div class="scroll-content">
+        <div class="section-label">CONNECTED ACCOUNTS</div>
+        <div class="holding-item"><div><div class="holding-ticker" style="font-size:13px">RBC Visa</div><div class="holding-name">Last synced 2h ago</div></div><div class="holding-pnl up">● Live</div></div>
+        <div class="holding-item"><div><div class="holding-ticker" style="font-size:13px">Tangerine</div><div class="holding-name">Relink needed</div></div><div class="holding-pnl dn">⚠ Relink</div></div>
+        <div class="holding-item"><div><div class="holding-ticker" style="font-size:13px">Scotiabank</div><div class="holding-name">Last synced 2h ago</div></div><div class="holding-pnl up">● Live</div></div>
+        <div class="holding-item"><div><div class="holding-ticker" style="font-size:13px">Wealthsimple</div><div class="holding-name">via SnapTrade · synced 2h ago</div></div><div class="holding-pnl up">● Live</div></div>
+        <div class="section-label">PREFERENCES</div>
+        <div class="tx-item"><div class="tx-name">Risk posture</div><div class="tx-cat">Defensive</div></div>
+        <div class="tx-item"><div class="tx-name">Sync interval</div><div class="tx-cat">15 min staleness</div></div>
+        <div class="tx-item"><div class="tx-name">Background sync</div><div class="tx-cat">2:00 AM daily</div></div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item"><div class="nav-icon">💰</div><div class="nav-label">Budget</div></div>
+        <div class="nav-item"><div class="nav-icon">📈</div><div class="nav-label">Portfolio</div></div>
+        <div class="nav-item"><div class="nav-icon">🔔</div><div class="nav-label">Alerts</div><div class="nav-badge">3</div></div>
+        <div class="nav-item active"><div class="nav-icon">⚙️</div><div class="nav-label" style="color:#3FB950">Settings</div></div>
+      </div>
+    </div>
+
+  </div><!-- end phone 1 -->
+
+
+  <!-- ── PHONE 2: CLEAN ── -->
+  <div class="phone theme-clean">
+
+    <!-- BUDGET -->
+    <div class="screen active" id="t2-budget">
+      <div class="status-bar" style="background:#fff"><span style="color:#64748B">9:41</span><span style="color:#64748B">⚡ 87%</span></div>
+      <div class="header">
+        <div class="header-title">Budget</div>
+        <div class="header-sub">July 2026</div>
+      </div>
+      <div class="month-nav">
+        <div class="month-nav-btn">‹</div>
+        <div class="month-name">July 2026</div>
+        <div class="month-net">-$420</div>
+        <div class="month-nav-btn">›</div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-label">Spent</div>
+          <div class="stat-value">$3,240</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Left</div>
+          <div class="stat-value green">$1,560</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Saved</div>
+          <div class="stat-value green">$800</div>
+        </div>
+      </div>
+      <div class="scroll-content">
+        <div class="section-label">Envelopes</div>
+        <div class="envelope-list">
+          <div class="envelope-item">
+            <div class="envelope-header">
+              <span class="envelope-name">Restaurants</span>
+              <span class="envelope-amounts"><span class="over">$420 / $400</span></span>
+            </div>
+            <div class="progress-track"><div class="progress-fill over" style="width:100%"></div></div>
+          </div>
+          <div class="envelope-item">
+            <div class="envelope-header">
+              <span class="envelope-name">Groceries</span>
+              <span class="envelope-amounts">$480 / $600</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill" style="width:80%"></div></div>
+          </div>
+          <div class="envelope-item">
+            <div class="envelope-header">
+              <span class="envelope-name">Transport</span>
+              <span class="envelope-amounts">$120 / $300</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill" style="width:40%"></div></div>
+          </div>
+          <div class="envelope-item">
+            <div class="envelope-header">
+              <span class="envelope-name">TFSA Investment</span>
+              <span class="envelope-amounts">$500 / $500</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill" style="width:100%"></div></div>
+          </div>
+        </div>
+        <div class="llm-bar">
+          <span class="llm-timestamp">✦ Analyzed <span>2h ago</span></span>
+          <button class="reanalyze-btn">↻ Re-analyze</button>
+        </div>
+        <div class="insight-card">
+          <div class="card-label">⚠ Insight</div>
+          <div class="card-text">Restaurants $20 over budget — 3rd month in a row trending above target.</div>
+        </div>
+        <div class="action-card">
+          <div class="card-label">→ Action</div>
+          <div class="card-text">Move $20 from Transport (55% remaining) to Restaurants to balance?</div>
+          <div class="card-actions">
+            <button class="card-approve">Apply</button>
+            <button class="card-dismiss">Dismiss</button>
+          </div>
+        </div>
+        <div class="section-label">Recent Transactions</div>
+        <div style="background:#fff;margin:0 16px;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
+          <div class="tx-item"><div><div class="tx-name">Tim Hortons</div><div class="tx-cat">Restaurants</div></div><div class="tx-amount">-$6.50</div></div>
+          <div class="tx-item"><div><div class="tx-name">Loblaws</div><div class="tx-cat">Groceries</div></div><div class="tx-amount">-$94.20</div></div>
+          <div class="tx-item" style="border:none"><div><div class="tx-name">Shell</div><div class="tx-cat">Transport</div></div><div class="tx-amount">-$62.00</div></div>
+        </div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item active"><div class="nav-icon">💰</div><div class="nav-label">Budget</div></div>
+        <div class="nav-item"><div class="nav-icon">📈</div><div class="nav-label">Portfolio</div></div>
+        <div class="nav-item"><div class="nav-icon">🔔</div><div class="nav-label">Alerts</div><div class="nav-badge">3</div></div>
+        <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">Settings</div></div>
+      </div>
+    </div>
+
+    <!-- PORTFOLIO -->
+    <div class="screen" id="t2-portfolio">
+      <div class="status-bar" style="background:#fff"><span style="color:#64748B">9:41</span><span style="color:#64748B">⚡ 87%</span></div>
+      <div class="ticker-tape">AAPL <span class="up">+0.8%</span> &nbsp; VFV <span class="dn">-0.3%</span> &nbsp; BTC <span class="up">+2.1%</span> &nbsp; MSFT <span class="up">+1.2%</span></div>
+      <div class="portfolio-value">
+        <div class="pv-label">Portfolio Value</div>
+        <div class="pv-number">$48,320</div>
+        <div class="pv-change">+$210 today · +14.2% all-time</div>
+      </div>
+      <div class="chart-area">
+        <svg class="chart-svg" viewBox="0 0 335 100" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="cg1" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#6366F1" stop-opacity="0.25"/>
+              <stop offset="100%" stop-color="#6366F1" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path class="chart-fill" d="M0,80 C40,75 60,70 80,60 C100,50 120,55 140,45 C160,35 180,40 200,30 C220,20 240,25 260,18 C280,12 300,15 335,8 L335,100 L0,100 Z" fill="url(#cg1)"/>
+          <path d="M0,80 C40,75 60,70 80,60 C100,50 120,55 140,45 C160,35 180,40 200,30 C220,20 240,25 260,18 C280,12 300,15 335,8" stroke="#6366F1"/>
+        </svg>
+      </div>
+      <div class="scroll-content">
+        <div class="section-label">Holdings</div>
+        <div class="holding-list">
+          <div class="holding-item"><div><div class="holding-ticker">VFV</div><div class="holding-name">Vanguard S&P 500 ETF</div></div><div><div class="holding-value">$18,200</div><div class="holding-pnl dn">-$180 (-1.1%)</div></div></div>
+          <div class="holding-item"><div><div class="holding-ticker">AAPL</div><div class="holding-name">Apple · TFSA</div></div><div><div class="holding-value">$20,340</div><div class="holding-pnl up">+$420 (+8.2%)</div></div></div>
+          <div class="holding-item" style="border:none"><div><div class="holding-ticker">BTC</div><div class="holding-name">Bitcoin · 0.4 BTC</div></div><div><div class="holding-value">$9,780</div><div class="holding-pnl up">+$2,100 (+22%)</div></div></div>
+        </div>
+        <div class="llm-bar">
+          <span class="llm-timestamp">✦ Analyzed <span>6h ago</span></span>
+          <button class="reanalyze-btn">↻ Re-analyze</button>
+        </div>
+        <div class="action-card">
+          <div class="card-label">→ Action</div>
+          <div class="card-text">Consider selling VFV to begin self-directed transition. Freeing ~$18K aligns with your defensive posture and opens positions in individual securities.</div>
+          <div class="card-actions">
+            <button class="card-approve">Noted</button>
+            <button class="card-dismiss">Dismiss</button>
+          </div>
+        </div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item"><div class="nav-icon">💰</div><div class="nav-label">Budget</div></div>
+        <div class="nav-item active"><div class="nav-icon">📈</div><div class="nav-label" style="color:#6366F1">Portfolio</div></div>
+        <div class="nav-item"><div class="nav-icon">🔔</div><div class="nav-label">Alerts</div><div class="nav-badge">3</div></div>
+        <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">Settings</div></div>
+      </div>
+    </div>
+
+    <!-- ALERTS -->
+    <div class="screen" id="t2-alerts">
+      <div class="status-bar" style="background:#F8FAFC"><span style="color:#64748B">9:41</span><span style="color:#64748B">⚡ 87%</span></div>
+      <div class="header" style="background:#F8FAFC">
+        <div class="header-title">Alerts <span style="color:#EF4444;font-size:16px;font-weight:700">3</span></div>
+        <div class="header-sub">TradingView webhooks</div>
+      </div>
+      <div class="scroll-content">
+        <div class="section-label">Unread</div>
+        <div class="alert-item"><div class="alert-dot red"></div><div><div class="alert-ticker">AAPL</div><div class="alert-condition">RSI crossed below 30 — Oversold</div><div class="alert-meta">$198.20 · 14 min ago</div><div class="alert-analyze">Analyze with Claude →</div></div></div>
+        <div class="alert-item"><div class="alert-dot yellow"></div><div><div class="alert-ticker">VFV</div><div class="alert-condition">Price crossed below 200MA</div><div class="alert-meta">$112.40 · 2h ago</div><div class="alert-analyze">Analyze with Claude →</div></div></div>
+        <div class="section-label">Earlier</div>
+        <div class="alert-item"><div class="alert-dot green"></div><div><div class="alert-ticker">BTC</div><div class="alert-condition">Price target reached — $94,200</div><div class="alert-meta">$94,200 · 1d ago</div><div class="alert-analyze">Analyze with Claude →</div></div></div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item"><div class="nav-icon">💰</div><div class="nav-label">Budget</div></div>
+        <div class="nav-item"><div class="nav-icon">📈</div><div class="nav-label">Portfolio</div></div>
+        <div class="nav-item active"><div class="nav-icon">🔔</div><div class="nav-label" style="color:#6366F1">Alerts</div></div>
+        <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">Settings</div></div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="screen" id="t2-settings">
+      <div class="status-bar" style="background:#F8FAFC"><span style="color:#64748B">9:41</span><span style="color:#64748B">⚡ 87%</span></div>
+      <div class="header" style="background:#F8FAFC">
+        <div class="header-title">Settings</div>
+      </div>
+      <div class="scroll-content">
+        <div class="section-label">Connected Accounts</div>
+        <div class="holding-list">
+          <div class="holding-item"><div><div class="holding-ticker" style="font-size:13px;font-weight:600">RBC Visa</div><div class="holding-name">Synced 2h ago</div></div><div><div class="holding-pnl up">● Live</div></div></div>
+          <div class="holding-item"><div><div class="holding-ticker" style="font-size:13px;font-weight:600">Tangerine</div><div class="holding-name">Relink required</div></div><div><div class="holding-pnl dn">⚠ Relink</div></div></div>
+          <div class="holding-item"><div><div class="holding-ticker" style="font-size:13px;font-weight:600">Scotiabank</div><div class="holding-name">Synced 2h ago</div></div><div><div class="holding-pnl up">● Live</div></div></div>
+          <div class="holding-item" style="border:none"><div><div class="holding-ticker" style="font-size:13px;font-weight:600">Wealthsimple</div><div class="holding-name">SnapTrade · Synced 2h ago</div></div><div><div class="holding-pnl up">● Live</div></div></div>
+        </div>
+        <div class="section-label">Preferences</div>
+        <div style="background:#fff;margin:0 16px;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
+          <div class="tx-item"><div class="tx-name">Risk posture</div><div style="font-size:13px;font-weight:500;color:#6366F1">Defensive</div></div>
+          <div class="tx-item"><div class="tx-name">Staleness threshold</div><div style="font-size:13px;color:#64748B">15 minutes</div></div>
+          <div class="tx-item" style="border:none"><div class="tx-name">Background sync</div><div style="font-size:13px;color:#64748B">2:00 AM</div></div>
+        </div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item"><div class="nav-icon">💰</div><div class="nav-label">Budget</div></div>
+        <div class="nav-item"><div class="nav-icon">📈</div><div class="nav-label">Portfolio</div></div>
+        <div class="nav-item"><div class="nav-icon">🔔</div><div class="nav-label">Alerts</div><div class="nav-badge">3</div></div>
+        <div class="nav-item active"><div class="nav-icon">⚙️</div><div class="nav-label" style="color:#6366F1">Settings</div></div>
+      </div>
+    </div>
+
+  </div><!-- end phone 2 -->
+
+
+  <!-- ── PHONE 3: GRADIENT ── -->
+  <div class="phone theme-gradient">
+
+    <!-- BUDGET -->
+    <div class="screen active" id="t3-budget">
+      <div class="status-bar"><span>9:41</span><span>⚡ 87%</span></div>
+      <div class="header">
+        <div class="header-title">Budget</div>
+        <div class="header-sub">July 2026</div>
+      </div>
+      <div class="month-nav">
+        <div class="month-nav-btn">‹</div>
+        <div class="month-name">July 2026</div>
+        <div class="month-net">-$420</div>
+        <div class="month-nav-btn">›</div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-label">Spent</div>
+          <div class="stat-value">$3,240</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Left</div>
+          <div class="stat-value green">$1,560</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Saved</div>
+          <div class="stat-value green">$800</div>
+        </div>
+      </div>
+      <div class="scroll-content">
+        <div class="section-label">Envelopes</div>
+        <div class="envelope-item">
+          <div class="envelope-header"><span class="envelope-name">Restaurants</span><span class="envelope-amounts"><span class="over">$420 / $400</span></span></div>
+          <div class="progress-track"><div class="progress-fill over" style="width:100%"></div></div>
+        </div>
+        <div class="envelope-item">
+          <div class="envelope-header"><span class="envelope-name">Groceries</span><span class="envelope-amounts">$480 / $600</span></div>
+          <div class="progress-track"><div class="progress-fill" style="width:80%"></div></div>
+        </div>
+        <div class="envelope-item">
+          <div class="envelope-header"><span class="envelope-name">Transport</span><span class="envelope-amounts">$120 / $300</span></div>
+          <div class="progress-track"><div class="progress-fill" style="width:40%"></div></div>
+        </div>
+        <div class="envelope-item">
+          <div class="envelope-header"><span class="envelope-name">TFSA Investment</span><span class="envelope-amounts">$500 / $500</span></div>
+          <div class="progress-track"><div class="progress-fill" style="width:100%"></div></div>
+        </div>
+        <div class="llm-bar">
+          <span class="llm-timestamp">✦ Analyzed <span>2h ago</span></span>
+          <button class="reanalyze-btn">↻ Re-analyze</button>
+        </div>
+        <div class="insight-card">
+          <div class="card-label">⚠ Insight</div>
+          <div class="card-text">Restaurants $20 over budget — 3rd month trending above target.</div>
+        </div>
+        <div class="action-card">
+          <div class="card-label">→ Action</div>
+          <div class="card-text">Move $20 from Transport (55% remaining) to cover Restaurants overage?</div>
+          <div class="card-actions">
+            <button class="card-approve">Apply</button>
+            <button class="card-dismiss">Dismiss</button>
+          </div>
+        </div>
+        <div class="section-label">Recent</div>
+        <div class="tx-item"><div><div class="tx-name">Tim Hortons</div><div class="tx-cat">Restaurants</div></div><div class="tx-amount">-$6.50</div></div>
+        <div class="tx-item"><div><div class="tx-name">Loblaws</div><div class="tx-cat">Groceries</div></div><div class="tx-amount">-$94.20</div></div>
+        <div class="tx-item"><div><div class="tx-name">Shell</div><div class="tx-cat">Transport</div></div><div class="tx-amount">-$62.00</div></div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item active"><div class="nav-icon">💰</div><div class="nav-label">Budget</div></div>
+        <div class="nav-item"><div class="nav-icon">📈</div><div class="nav-label">Portfolio</div></div>
+        <div class="nav-item"><div class="nav-icon">🔔</div><div class="nav-label">Alerts</div><div class="nav-badge">3</div></div>
+        <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">Settings</div></div>
+      </div>
+    </div>
+
+    <!-- PORTFOLIO -->
+    <div class="screen" id="t3-portfolio">
+      <div class="status-bar"><span>9:41</span><span>⚡ 87%</span></div>
+      <div class="ticker-tape">AAPL <span class="up">+0.8%</span> &nbsp; VFV <span class="dn">-0.3%</span> &nbsp; BTC <span class="up">+2.1%</span> &nbsp; MSFT <span class="up">+1.2%</span></div>
+      <div class="portfolio-hero">
+        <div class="pv-label">Portfolio Value</div>
+        <div class="pv-number">$48,320</div>
+        <div class="pv-change">+$210 today · +14.2% all-time</div>
+      </div>
+      <div class="chart-area">
+        <svg class="chart-svg" viewBox="0 0 335 100" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="gg1" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#7C3AED" stop-opacity="0.4"/>
+              <stop offset="100%" stop-color="#2563EB" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path class="chart-fill" d="M0,80 C40,75 60,70 80,60 C100,50 120,55 140,45 C160,35 180,40 200,30 C220,20 240,25 260,18 C280,12 300,15 335,8 L335,100 L0,100 Z" fill="url(#gg1)"/>
+          <path d="M0,80 C40,75 60,70 80,60 C100,50 120,55 140,45 C160,35 180,40 200,30 C220,20 240,25 260,18 C280,12 300,15 335,8" stroke="url(#gg1stroke)"/>
+          <defs><linearGradient id="gg1stroke" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#7C3AED"/><stop offset="100%" stop-color="#60A5FA"/></linearGradient></defs>
+          <path d="M0,80 C40,75 60,70 80,60 C100,50 120,55 140,45 C160,35 180,40 200,30 C220,20 240,25 260,18 C280,12 300,15 335,8" stroke="#A78BFA" fill="none"/>
+        </svg>
+      </div>
+      <div class="scroll-content">
+        <div class="section-label">Holdings</div>
+        <div class="holding-item"><div><div class="holding-ticker">VFV</div><div class="holding-name">Vanguard S&P 500 ETF</div></div><div><div class="holding-value">$18,200</div><div class="holding-pnl dn">-$180 (-1.1%)</div></div></div>
+        <div class="holding-item"><div><div class="holding-ticker">AAPL</div><div class="holding-name">Apple Inc · TFSA</div></div><div><div class="holding-value">$20,340</div><div class="holding-pnl up">+$420 (+8.2%)</div></div></div>
+        <div class="holding-item"><div><div class="holding-ticker">BTC</div><div class="holding-name">Bitcoin · 0.4 BTC</div></div><div><div class="holding-value">$9,780</div><div class="holding-pnl up">+$2,100 (+22%)</div></div></div>
+        <div class="llm-bar">
+          <span class="llm-timestamp">✦ Analyzed <span>6h ago</span></span>
+          <button class="reanalyze-btn">↻ Re-analyze</button>
+        </div>
+        <div class="action-card">
+          <div class="card-label">→ Action</div>
+          <div class="card-text">Consider selling VFV to begin self-directed transition. ~$18K freed for individual positions.</div>
+          <div class="card-actions">
+            <button class="card-approve">Noted</button>
+            <button class="card-dismiss">Dismiss</button>
+          </div>
+        </div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item"><div class="nav-icon">💰</div><div class="nav-label">Portfolio</div></div>
+        <div class="nav-item active"><div class="nav-icon">📈</div><div class="nav-label">Portfolio</div></div>
+        <div class="nav-item"><div class="nav-icon">🔔</div><div class="nav-label">Alerts</div><div class="nav-badge">3</div></div>
+        <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">Settings</div></div>
+      </div>
+    </div>
+
+    <!-- ALERTS -->
+    <div class="screen" id="t3-alerts">
+      <div class="status-bar"><span>9:41</span><span>⚡ 87%</span></div>
+      <div class="header">
+        <div class="header-title">Alerts</div>
+        <div class="header-sub">3 unread</div>
+      </div>
+      <div class="scroll-content">
+        <div class="section-label">Unread</div>
+        <div class="alert-item"><div class="alert-dot red"></div><div><div class="alert-ticker">AAPL</div><div class="alert-condition">RSI crossed below 30 — Oversold</div><div class="alert-meta">$198.20 · 14 min ago</div><div class="alert-analyze">Analyze with Claude →</div></div></div>
+        <div class="alert-item"><div class="alert-dot yellow"></div><div><div class="alert-ticker">VFV</div><div class="alert-condition">Price crossed below 200MA</div><div class="alert-meta">$112.40 · 2h ago</div><div class="alert-analyze">Analyze with Claude →</div></div></div>
+        <div class="section-label">Earlier</div>
+        <div class="alert-item"><div class="alert-dot green"></div><div><div class="alert-ticker">BTC</div><div class="alert-condition">Price target reached — $94,200</div><div class="alert-meta">$94,200 · 1d ago</div><div class="alert-analyze">Analyze with Claude →</div></div></div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item"><div class="nav-icon">💰</div><div class="nav-label">Budget</div></div>
+        <div class="nav-item"><div class="nav-icon">📈</div><div class="nav-label">Portfolio</div></div>
+        <div class="nav-item active"><div class="nav-icon">🔔</div><div class="nav-label">Alerts</div></div>
+        <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">Settings</div></div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="screen" id="t3-settings">
+      <div class="status-bar"><span>9:41</span><span>⚡ 87%</span></div>
+      <div class="header">
+        <div class="header-title">Settings</div>
+      </div>
+      <div class="scroll-content">
+        <div class="section-label">Connected Accounts</div>
+        <div class="holding-item"><div><div class="holding-ticker" style="font-size:13px">RBC Visa</div><div class="holding-name">Synced 2h ago</div></div><div class="holding-pnl up">● Live</div></div>
+        <div class="holding-item"><div><div class="holding-ticker" style="font-size:13px">Tangerine</div><div class="holding-name">Relink required</div></div><div class="holding-pnl dn">⚠ Relink</div></div>
+        <div class="holding-item"><div><div class="holding-ticker" style="font-size:13px">Scotiabank</div><div class="holding-name">Synced 2h ago</div></div><div class="holding-pnl up">● Live</div></div>
+        <div class="holding-item"><div><div class="holding-ticker" style="font-size:13px">Wealthsimple</div><div class="holding-name">SnapTrade · Synced 2h ago</div></div><div class="holding-pnl up">● Live</div></div>
+        <div class="section-label">Preferences</div>
+        <div class="tx-item"><div class="tx-name">Risk posture</div><div class="tx-cat" style="color:#A78BFA;font-weight:500">Defensive</div></div>
+        <div class="tx-item"><div class="tx-name">Staleness threshold</div><div class="tx-cat">15 minutes</div></div>
+        <div class="tx-item"><div class="tx-name">Background sync</div><div class="tx-cat">2:00 AM</div></div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item"><div class="nav-icon">💰</div><div class="nav-label">Budget</div></div>
+        <div class="nav-item"><div class="nav-icon">📈</div><div class="nav-label">Portfolio</div></div>
+        <div class="nav-item"><div class="nav-icon">🔔</div><div class="nav-label">Alerts</div><div class="nav-badge">3</div></div>
+        <div class="nav-item active"><div class="nav-icon">⚙️</div><div class="nav-label">Settings</div></div>
+      </div>
+    </div>
+
+  </div><!-- end phone 3 -->
+
+</div><!-- end phones-row -->
+
+<script>
+const currentTab = { name: 'budget' };
+
+function switchTab(tab, btn) {
+  currentTab.name = tab;
+
+  // Update tab buttons
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  // Switch screens for all 3 themes
+  ['t1','t2','t3'].forEach(theme => {
+    ['budget','portfolio','alerts','settings'].forEach(t => {
+      const el = document.getElementById(`${theme}-${t}`);
+      if (el) el.classList.toggle('active', t === tab);
+    });
+  });
+}
+</script>
+</body>
+</html>

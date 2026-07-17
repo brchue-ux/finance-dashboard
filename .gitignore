@@ -7,6 +7,6 @@ dist/
 .expo/
 *.tsbuildinfo
 .turbo/
-handoff-*.md
+/handoff-*.md
 .autosync
 .claude/settings.local.json
