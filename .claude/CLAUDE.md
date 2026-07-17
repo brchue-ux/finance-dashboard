@@ -15,10 +15,13 @@ A personal finance intelligence dashboard integrating Wealthsimple, bank transac
 - Scaffold: complete (all files written, deps installed)
 - Schema: pushed to local SQLite (`backend/local.db`) — all 13 tables live
 - Turso cloud: token added, dashboard commands run
-- Spec: corrected post-completion analysis (2026-07-16) — all critical/high issues resolved; 6 pre-build items in progress (2 of 6 complete)
+- Spec: corrected post-completion analysis (2026-07-16) — all critical/high issues resolved; all 6 pre-build items complete as of 2026-07-17. **Spec is build-ready.**
 - Item 1 done: MCP server → `twelvedata/mcp` (official, HTTP transport, free tier 800 calls/day)
 - Item 2 done: TradingView paid plan friction → native price alert system added (node-cron + yahoo-finance2 quoteCombine; TradingView webhooks now optional enhancement only)
-- Items 3–6 remaining: LLM unknown merchant categorization, Tangerine data lag, prompt cache TTL cost model, Scotiabank fragility KPIs
+- Item 3 done: LLM merchant categorization — §6 documents uncategorized transactions go to user review queue (not LLM fallback), closing the Ticket 004 inconsistency
+- Item 4 done: Tangerine data lag — §5.1 has the UI staleness indicator; §8 System Prompt now has a DATA FRESHNESS section so the LLM doesn't make false-precision claims on stale Tangerine data
+- Item 5 done: Prompt cache TTL cost model — §8 has the 5-min TTL note; added a nightly Batch API pre-generation job (§7/§8) at 50% off, synchronous calls reserved for on-demand/alert-triggered sessions
+- Item 6 done: Scotiabank fragility — §5.1 known-issue paragraph; §11 has an explicit 4x/year/user relink KPI and a Q3 2027 CDBA migration review date
 
 **Key env file:** `backend/.env.local` (ENCRYPTION_KEY + BETTER_AUTH_SECRET already generated) — **exact location TBD**
 
