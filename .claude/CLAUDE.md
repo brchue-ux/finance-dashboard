@@ -3,18 +3,21 @@
 ## Active Projects
 
 ### Finance Intelligence Dashboard (Wayfinder map)
-A personal finance intelligence dashboard integrating Wealthsimple, bank transactions (RBC + Tangerine + Scotiabank), TradingView, and the Claude API (advisory engine). **Spec written and scaffold complete.**
+A personal finance intelligence dashboard integrating Wealthsimple, bank transactions (RBC + Tangerine + Scotiabank), TradingView, and the Claude API (advisory engine). **Spec build-ready. Auth + Plaid Sandbox loop verified working (2026-07-17, from the Linux homeserver checkout).**
 
-**Codebase:** `C:\Users\bchue\finance-dashboard\`
-- `backend/` — Next.js API-only (Railway, port 3001)
-- `frontend/` — Expo React Native (Vercel web + EAS Android APK)
+**Codebase:** synced between `C:\Users\bchue\finance-dashboard\` (Windows) and `~/projects/home_budget_app` (Linux homeserver) via `scripts/sync-*.sh`/`.ps1`.
+- `backend/` — Next.js API-only (Railway, port 3001; local dev used 3011 on the homeserver — 3001 is taken by an unrelated container, `home-agent-orchestrator`)
+- `frontend/` — Expo React Native (Vercel web + EAS Android APK) — **not yet touched this session, still scaffold-only**
 
-**Architecture locked:** Separated backend + frontend (no monolith). See spec: `~/.claude/projects/C--Users-bchue/wayfinder/spec.md`
+**Architecture locked:** Separated backend + frontend (no monolith). See spec: `wayfinder/spec.md` (in-repo, `.claude/wayfinder/`)
 
 **Build status:**
-- Scaffold: complete (all files written, deps installed)
-- Schema: pushed to local SQLite (`backend/local.db`) — all 13 tables live
-- Turso cloud: token added, dashboard commands run
+- Scaffold: complete (all files written)
+- Schema: 19 tables live in local SQLite (`backend/local.db`) — the original 13, +3 for price alerts (`price_alerts`/`alert_fires`/`price_cache`), +4 for Better Auth (`user`/`session`/`account`/`verification`, replacing the old minimal `users` table)
+- **Auth: verified working end-to-end.** Better Auth's schema was never actually generated before this session — no authenticated route could ever succeed. Fixed via `npx @better-auth/cli generate`; `seed.ts` rewritten to create the seed account through Better Auth's real sign-up path. Confirmed: sign-in returns a session cookie, protected routes correctly 401/200.
+- **Plaid Sandbox loop: verified working end-to-end.** link token → sandbox public_token → exchange → sync, confirmed real transaction and account data lands in `local.db`. Fixed a real bug along the way: `link/token/create` was unconditionally sending an unregistered `redirect_uri`, which made Plaid reject `linkTokenCreate` for every institution, not just RBC's OAuth flow (now optional via `PLAID_REDIRECT_URI`). Also added `lib/plaid-accounts.ts` to populate real account names/types from Plaid instead of placeholder values.
+- Next.js patched 15.3.3 → 15.5.20 (critical CVE-2025-66478, non-breaking patch bump)
+- Turso cloud: token added, dashboard commands run (per earlier session — not verified this session; local dev uses SQLite only, `DATABASE_AUTH_TOKEN` is intentionally empty in `backend/.env.local`)
 - Spec: corrected post-completion analysis (2026-07-16) — all critical/high issues resolved; all 6 pre-build items complete as of 2026-07-17. **Spec is build-ready.**
 - Item 1 done: MCP server → `twelvedata/mcp` (official, HTTP transport, free tier 800 calls/day)
 - Item 2 done: TradingView paid plan friction → native price alert system added (node-cron + yahoo-finance2 quoteCombine; TradingView webhooks now optional enhancement only)
@@ -23,7 +26,13 @@ A personal finance intelligence dashboard integrating Wealthsimple, bank transac
 - Item 5 done: Prompt cache TTL cost model — §8 has the 5-min TTL note; added a nightly Batch API pre-generation job (§7/§8) at 50% off, synchronous calls reserved for on-demand/alert-triggered sessions
 - Item 6 done: Scotiabank fragility — §5.1 known-issue paragraph; §11 has an explicit 4x/year/user relink KPI and a Q3 2027 CDBA migration review date
 
-**Key env file:** `backend/.env.local` (ENCRYPTION_KEY + BETTER_AUTH_SECRET already generated) — **exact location TBD**
+**Known open items (not yet fixed):**
+- `lib/market-data/yahoo.ts` and `lib/snaptrade.ts` have pre-existing TypeScript errors (predate this session) — will block `next build` (though not `next dev`) until fixed
+- `PLAID_REDIRECT_URI` / the RBC OAuth Link flow is unbuilt — needs a real frontend redirect page, not yet started
+- `SNAPTRADE_CLIENT_ID`, `SNAPTRADE_CONSUMER_KEY`, `TRADINGVIEW_WEBHOOK_SECRET`, `ANTHROPIC_API_KEY`, `ALPHA_VANTAGE_API_KEY` are still empty placeholders in `backend/.env.local` — needed before their respective integrations can be tested
+- Frontend hasn't been run or tested at all yet
+
+**Key env file:** `backend/.env.local` — populated for auth (`ENCRYPTION_KEY`, `BETTER_AUTH_SECRET`, `SEED_EMAIL`/`SEED_PASSWORD` — see `~/.secrets/finance-dashboard-local-dev-seed.txt`) and Plaid Sandbox (`PLAID_CLIENT_ID`/`PLAID_SECRET`, from `~/.secrets/Plaid.txt`). Gitignored, local to each machine — Windows and Linux checkouts need this filled in separately.
 
 **Handoff doc (start here in a new session):**
 `~/.claude/projects/C--Users-bchue/wayfinder/handoff-2026-07-16.md`
