@@ -2,6 +2,7 @@ import { relations, sql } from "drizzle-orm";
 import {
   index,
   integer,
+  primaryKey,
   real,
   sqliteTable,
   text,
@@ -127,14 +128,17 @@ export const bankAccounts = sqliteTable("bank_accounts", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id),
-  connectionId: text("connection_id")
-    .notNull()
-    .references(() => bankConnections.id),
-  plaidAccountId: text("plaid_account_id").notNull().unique(),
+  connectionId: text("connection_id").references(() => bankConnections.id), // NULL for type = "manual"
+  plaidAccountId: text("plaid_account_id").unique(), // NULL for type = "manual"
   name: text("name").notNull(),
-  type: text("type").notNull(), // "chequing" | "savings" | "credit"
+  type: text("type").notNull(), // "chequing" | "savings" | "credit" | "manual"
   mask: text("mask"), // last 4 digits
   institution: text("institution").notNull(),
+  // Current balances from Plaid /accounts/get — overwritten each sync; history in bank_balance_snapshots
+  balanceAvailable: real("balance_available"),
+  balanceCurrent: real("balance_current"),
+  balanceLimit: real("balance_limit"), // credit accounts
+  isoCurrencyCode: text("iso_currency_code"),
 });
 
 // ── transactions ─────────────────────────────────────────────────────────────
@@ -146,12 +150,20 @@ export const transactions = sqliteTable("transactions", {
   accountId: text("account_id")
     .notNull()
     .references(() => bankAccounts.id),
-  plaidTransactionId: text("plaid_transaction_id").unique(),
-  date: text("date").notNull(), // ISO 8601 YYYY-MM-DD
+  plaidTransactionId: text("plaid_transaction_id").unique(), // NULL for imported/manual rows
+  date: text("date").notNull(), // ISO 8601 YYYY-MM-DD (posted date)
+  authorizedDate: text("authorized_date"), // Plaid authorized_date (vs posted); NULL for imported rows
   description: text("description").notNull(), // raw bank description
   merchantName: text("merchant_name"), // cleaned by categorization engine
+  merchantLogoUrl: text("merchant_logo_url"), // Plaid merchant enrichment
+  merchantWebsite: text("merchant_website"), // Plaid merchant enrichment
   amount: real("amount").notNull(), // negative = debit, positive = credit
-  category: text("category"), // envelope name assigned
+  isoCurrencyCode: text("iso_currency_code"),
+  category: text("category"), // envelope name assigned (app's own engine)
+  pfCategoryPrimary: text("pf_category_primary"), // Plaid personal_finance_category.primary — second signal
+  pfCategoryDetailed: text("pf_category_detailed"), // Plaid personal_finance_category.detailed
+  paymentChannel: text("payment_channel"), // "online" | "in store" | "other"
+  location: text("location"), // JSON: Plaid location object (address/city/lat/lon)
   pending: integer("pending").notNull().default(0), // boolean
   createdAt: integer("created_at").notNull(),
 });
@@ -229,6 +241,7 @@ export const holdings = sqliteTable("holdings", {
   quantity: real("quantity").notNull(),
   costBasis: real("cost_basis").notNull(), // per share
   marketValue: real("market_value").notNull(), // total position at snapshot time
+  openPnl: real("open_pnl"), // broker-computed unrealized P&L (SnapTrade Position.open_pnl) — stored alongside, not replacing, the app's own calc
   accountType: text("account_type").notNull(), // "tfsa" | "rrsp" | "non_reg" | "crypto"
   createdAt: integer("created_at").notNull(),
 });
@@ -335,7 +348,8 @@ export const tradingviewAlerts = sqliteTable("tradingview_alerts", {
   interval: text("interval"),
   rawPayload: text("raw_payload").notNull(), // JSON: full webhook body
   receivedAt: integer("received_at").notNull(),
-  analyzedAt: integer("analyzed_at"), // NULL until user triggers analysis
+  readAt: integer("read_at"), // NULL until user marks read (mirrors alert_fires.read_at)
+  analyzedAt: integer("analyzed_at"), // NULL until user triggers LLM analysis — a different fact than read_at
 });
 
 // ── llm_analysis_cache ────────────────────────────────────────────────────────
@@ -355,16 +369,82 @@ export const llmAnalysisCache = sqliteTable(
   (t) => [uniqueIndex("uq_llm_cache_user_view").on(t.userId, t.view)]
 );
 
-// ── import_jobs ───────────────────────────────────────────────────────────────
-export const importJobs = sqliteTable("import_jobs", {
-  id: text("id").primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => user.id),
-  source: text("source").notNull(), // "google_sheets" | "csv"
-  status: text("status").notNull().default("pending"), // "pending" | "processing" | "complete" | "failed"
-  rowsImported: integer("rows_imported").default(0),
-  errorMessage: text("error_message"),
-  createdAt: integer("created_at").notNull(),
-  completedAt: integer("completed_at"),
-});
+// ── job_runs ──────────────────────────────────────────────────────────────────
+// Observability spine — every background execution writes a row (replaces import_jobs).
+// Metadata rule: capture every data point available per run; trim later, can't backfill.
+export const jobRuns = sqliteTable(
+  "job_runs",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").references(() => user.id), // NULL for system-wide jobs (alert_poll)
+    jobType: text("job_type").notNull(), // "plaid_sync" | "snaptrade_sync" | "alert_poll" | "nightly_batch"
+    // | "import_csv" | "import_google_sheets" | "import_excel"
+    // | "tradingview_webhook" | "graph_subscription_renewal"
+    status: text("status").notNull(), // "running" | "complete" | "failed"
+    startedAt: integer("started_at").notNull(),
+    finishedAt: integer("finished_at"),
+    errorMessage: text("error_message"),
+    metadata: text("metadata"), // JSON: tickers polled, alerts fired, rows synced/imported, tokens used, batch IDs, …
+  },
+  (t) => [
+    index("idx_job_runs_type_started").on(t.jobType, t.startedAt), // dev-screen filtering, heartbeat queries
+    index("idx_job_runs_user").on(t.userId), // per-user views (import history)
+  ]
+);
+
+// ── bank_balance_snapshots ────────────────────────────────────────────────────
+// Append-only balance history — banking-side analog of portfolio_snapshots.
+// One row per account per daily sync. Powers net-worth-over-time; cannot be backfilled.
+export const bankBalanceSnapshots = sqliteTable(
+  "bank_balance_snapshots",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => bankAccounts.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id),
+    balanceAvailable: real("balance_available"),
+    balanceCurrent: real("balance_current"),
+    balanceLimit: real("balance_limit"),
+    isoCurrencyCode: text("iso_currency_code"),
+    capturedAt: integer("captured_at").notNull(),
+  },
+  (t) => [
+    index("idx_balance_snapshots_account").on(t.accountId, t.capturedAt), // per-account history
+    index("idx_balance_snapshots_user").on(t.userId, t.capturedAt), // net-worth query
+  ]
+);
+
+// ── webhook_credentials ───────────────────────────────────────────────────────
+// Per-user webhook secrets — the secret identifies the user for unauthenticated
+// inbound webhooks (TradingView sends it in the request body; plaintext never stored).
+export const webhookCredentials = sqliteTable(
+  "webhook_credentials",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id),
+    service: text("service").notNull(), // "tradingview"
+    secretHash: text("secret_hash").notNull(),
+    createdAt: integer("created_at").notNull(),
+    lastUsedAt: integer("last_used_at"),
+  },
+  (t) => [uniqueIndex("uq_webhook_credentials_hash").on(t.secretHash)] // lookup key on inbound webhook
+);
+
+// ── ohlcv_cache ───────────────────────────────────────────────────────────────
+// Durable OHLCV persistence (24h TTL enforced in code via fetched_at). Survives
+// Railway restarts — Yahoo breakage must not make historical chart data unrecoverable.
+export const ohlcvCache = sqliteTable(
+  "ohlcv_cache",
+  {
+    ticker: text("ticker").notNull(),
+    range: text("range").notNull(), // "1mo" | "3mo" | "6mo" | "1y" | "2y" | "5y"
+    bars: text("bars").notNull(), // JSON: OHLCV bar array
+    fetchedAt: integer("fetched_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.ticker, t.range] })]
+);

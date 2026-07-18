@@ -30,8 +30,15 @@ export async function GET(req: NextRequest) {
       .where(eq(portfolioSnapshots.userId, userId))
       .orderBy(desc(portfolioSnapshots.snapshotAt))
       .limit(365), // up to 1 year of daily snapshots for chart
+    // Explicit projection — the full row includes the encrypted SnapTrade
+    // credential, which must never reach the client (spec: contract-gap item 8)
     db
-      .select()
+      .select({
+        id: wealthsimpleConnections.id,
+        status: wealthsimpleConnections.status,
+        lastSyncedAt: wealthsimpleConnections.lastSyncedAt,
+        createdAt: wealthsimpleConnections.createdAt,
+      })
       .from(wealthsimpleConnections)
       .where(eq(wealthsimpleConnections.userId, userId))
       .limit(1),

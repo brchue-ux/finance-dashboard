@@ -2,12 +2,14 @@
  * POST /api/webhooks/tradingview
  * Receives TradingView alert webhooks.
  *
- * Auth: shared secret in request body (no auth headers available from TradingView).
- * Must return 200 within 5 seconds — write and return immediately.
+ * Auth: per-user shared secret in the request body (no auth headers available
+ * from TradingView). The secret's hash resolves the owning user via
+ * webhook_credentials — no env var, no hardcoded user, multi-user from day one.
+ * Must return 200 within 3 seconds — write and return immediately.
  *
  * Expected payload:
  * {
- *   "secret": "{{your-shared-secret}}",
+ *   "secret": "{{per-user-secret}}",
  *   "ticker": "{{ticker}}",
  *   "interval": "{{interval}}",
  *   "price": {{close}},
@@ -19,10 +21,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { tradingviewAlerts } from "@/db/schema";
 import { v4 as uuidv4 } from "uuid";
-
-// SnapTrade webhook is user-agnostic; alerts are attributed to the single user.
-// When multi-user is enabled, route by a user token embedded in the secret.
-const SINGLE_USER_ID_PLACEHOLDER = "DEFAULT_USER";
+import { resolveWebhookUser } from "@/lib/webhook-secrets";
+import { withJobRun } from "@/lib/jobs/job-runs";
 
 export async function POST(req: NextRequest) {
   const body = (await req.json()) as {
@@ -34,8 +34,8 @@ export async function POST(req: NextRequest) {
     condition?: string;
   };
 
-  const expectedSecret = process.env.TRADINGVIEW_WEBHOOK_SECRET;
-  if (!expectedSecret || body.secret !== expectedSecret) {
+  const userId = body.secret ? await resolveWebhookUser(body.secret, "tradingview") : null;
+  if (!userId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -44,16 +44,23 @@ export async function POST(req: NextRequest) {
   }
 
   // Write and return immediately — do not process synchronously
-  await db.insert(tradingviewAlerts).values({
-    id: uuidv4(),
-    userId: SINGLE_USER_ID_PLACEHOLDER, // TODO: resolve real user_id on multi-user
-    ticker: body.ticker,
-    conditionText: body.condition,
-    price: body.price ?? null,
-    interval: body.interval ?? null,
-    rawPayload: JSON.stringify(body),
-    receivedAt: Math.floor(Date.now() / 1000),
-  });
+  await withJobRun(
+    "tradingview_webhook",
+    async () => {
+      await db.insert(tradingviewAlerts).values({
+        id: uuidv4(),
+        userId,
+        ticker: body.ticker!,
+        conditionText: body.condition!,
+        price: body.price ?? null,
+        interval: body.interval ?? null,
+        rawPayload: JSON.stringify({ ...body, secret: "[redacted]" }),
+        receivedAt: Math.floor(Date.now() / 1000),
+      });
+      return { metadata: { ticker: body.ticker, condition: body.condition } };
+    },
+    userId
+  );
 
   return NextResponse.json({ ok: true });
 }

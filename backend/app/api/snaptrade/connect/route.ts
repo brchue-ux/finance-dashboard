@@ -11,7 +11,7 @@ import { db } from "@/db";
 import { wealthsimpleConnections } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { snaptrade } from "@/lib/snaptrade";
-import { encrypt } from "@/lib/crypto";
+import { encrypt, decrypt } from "@/lib/crypto";
 import { v4 as uuidv4 } from "uuid";
 
 export async function GET(req: NextRequest) {
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
   if (existing.length > 0) {
     snaptradeUserId = existing[0].snaptradeUserId;
-    snaptradeUserSecret = existing[0].snaptradeAuthToken; // encrypted — decrypt before use
+    snaptradeUserSecret = decrypt(existing[0].snaptradeAuthToken);
   } else {
     // Register new SnapTrade user
     const registerRes = await snaptrade.authentication.registerSnapTradeUser({
@@ -64,11 +64,19 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Generate connection link
+  // Generate connection link. customRedirect points the hosted portal back
+  // into the app after the Wealthsimple OAuth finishes (spec §5.2) — without
+  // it the user lands stranded on a SnapTrade default page. Same platform
+  // split as Plaid Hosted Link.
+  const body = (await req.json().catch(() => ({}))) as { platform?: "native" | "web" };
   const loginRes = await snaptrade.authentication.loginSnapTradeUser({
     userId: snaptradeUserId,
     userSecret: snaptradeUserSecret,
+    ...(body.platform === "native"
+      ? { customRedirect: "finance-dashboard://snaptrade-complete" }
+      : {}),
   });
 
-  return NextResponse.json({ redirectUri: loginRes.data.redirectURI });
+  const data = loginRes.data as { redirectURI?: string };
+  return NextResponse.json({ redirectUri: data.redirectURI });
 }

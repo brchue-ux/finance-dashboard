@@ -1,22 +1,24 @@
 /**
- * LLM advisory engine — wraps Vercel AI SDK streamText.
- * Model-agnostic: switching Claude model version = changing one constant.
+ * LLM advisory engine — Vercel AI SDK v7 (streamText/generateText with
+ * server-side tool loop). Model-agnostic: switching Claude model version =
+ * changing one constant.
  */
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { streamText, generateText } from "ai";
+import { streamText, generateText, stepCountIs } from "ai";
 import { SYSTEM_PROMPT, AUTO_CARD_INSTRUCTION } from "./prompts";
 import { assembleBudgetContext, assemblePortfolioContext } from "./context";
+import { anthropic, assembleTools } from "./tools";
 
 const MODEL = "claude-sonnet-4-6"; // change here to upgrade
 
-const anthropic = createAnthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+// Tool loop ceiling per call: enough for a few indicator lookups + searches
+// around the actual answer, low enough to bound cost and latency.
+const MAX_STEPS = 8;
 
 export type CardView = "budget" | "portfolio";
 
 /**
- * Auto-generate structured insight/action cards (batch, non-streaming).
+ * Auto-generate structured insight/action cards (non-streaming synchronous
+ * fallback path — the nightly Batch API job is the primary generator, §7).
  * Returns parsed card array. Throws if Claude returns invalid JSON.
  */
 export async function generateCards(userId: string, view: CardView) {
@@ -24,12 +26,15 @@ export async function generateCards(userId: string, view: CardView) {
     view === "budget"
       ? await assembleBudgetContext(userId)
       : await assemblePortfolioContext(userId);
+  const { tools, systemSuffix } = await assembleTools();
 
   const { text } = await generateText({
     model: anthropic(MODEL),
-    system: SYSTEM_PROMPT + context,
+    system: SYSTEM_PROMPT + context + systemSuffix,
     prompt: AUTO_CARD_INSTRUCTION,
-    maxTokens: 1500,
+    maxOutputTokens: 1500,
+    tools,
+    stopWhen: stepCountIs(MAX_STEPS),
   });
 
   const parsed = JSON.parse(text) as { cards: unknown[] };
@@ -50,15 +55,18 @@ export async function streamConversation(params: {
     params.view === "budget"
       ? await assembleBudgetContext(params.userId)
       : await assemblePortfolioContext(params.userId);
+  const { tools, systemSuffix } = await assembleTools();
 
-  const systemSuffix = params.alertContext
+  const alertSuffix = params.alertContext
     ? `\n\nALERT CONTEXT:\n${params.alertContext}`
     : "";
 
   return streamText({
     model: anthropic(MODEL),
-    system: SYSTEM_PROMPT + context + systemSuffix,
+    system: SYSTEM_PROMPT + context + alertSuffix + systemSuffix,
     messages: params.messages,
-    maxTokens: 2000,
+    maxOutputTokens: 2000,
+    tools,
+    stopWhen: stepCountIs(MAX_STEPS),
   });
 }

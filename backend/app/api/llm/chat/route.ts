@@ -37,5 +37,6 @@ export async function POST(req: NextRequest) {
     alertContext,
   });
 
-  return result.toDataStreamResponse();
+  // v7 UI message stream — consumed by @ai-sdk/react's useChat on the frontend
+  return result.toUIMessageStreamResponse();
 }

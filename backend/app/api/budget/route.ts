@@ -88,11 +88,46 @@ export async function GET(req: NextRequest) {
     .filter((t) => t.amount > 0)
     .reduce((s, t) => s + t.amount, 0);
 
+  // Notable transactions (spec §9 Budget item 5): deterministic, non-LLM.
+  // Signal: one transaction consuming ≥ 15% of its own envelope's allocation —
+  // percentage-of-own-envelope scales naturally by bucket size. One card per
+  // category, swipeable, capped at 3 transactions each. (The other signal —
+  // category approaching its cap — is already in each summary's
+  // spent/allocated/overBudget.)
+  const NOTABLE_SHARE = 0.15; // starting constant; tune after real usage
+  const NOTABLE_CAP_PER_CATEGORY = 3;
+  const notableByCategory = summaries
+    .filter((env) => env.allocated > 0)
+    .map((env) => ({
+      category: env.name,
+      allocated: env.allocated,
+      transactions: monthTxns
+        .filter(
+          (t) =>
+            t.category === env.name &&
+            t.amount < 0 &&
+            Math.abs(t.amount) / env.allocated >= NOTABLE_SHARE
+        )
+        .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+        .slice(0, NOTABLE_CAP_PER_CATEGORY)
+        .map((t) => ({
+          id: t.id,
+          accountId: t.accountId,
+          date: t.date,
+          description: t.description,
+          merchantName: t.merchantName,
+          amount: t.amount,
+          shareOfAllocation: Math.abs(t.amount) / env.allocated,
+        })),
+    }))
+    .filter((c) => c.transactions.length > 0);
+
   return NextResponse.json({
     year,
     month,
     envelopes: summaries,
     transactions: monthTxns,
+    notableTransactions: notableByCategory,
     summary: {
       totalSpent,
       totalAllocated,

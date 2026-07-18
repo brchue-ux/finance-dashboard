@@ -1,0 +1,119 @@
+/**
+ * GET /api/reports?months=12
+ * Deterministic financial reports (spec §9 Reports screen — no LLM):
+ *  - netWorth: daily series of bank balances (deposits − credit owed) + portfolio value
+ *  - categoryTrends: per-category monthly spend
+ *  - incomeVsExpenses: monthly inflows vs outflows
+ * The monthly spending drill-down reuses GET /api/budget for that month.
+ */
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { db } from "@/db";
+import { bankAccounts, bankBalanceSnapshots, portfolioSnapshots, transactions } from "@/db/schema";
+import { eq } from "drizzle-orm";
+
+export async function GET(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = session.user.id;
+
+  const { searchParams } = new URL(req.url);
+  const months = Math.min(parseInt(searchParams.get("months") ?? "12", 10) || 12, 60);
+
+  const [accounts, balanceSnaps, portfolioSnaps, txns] = await Promise.all([
+    db
+      .select({ id: bankAccounts.id, type: bankAccounts.type })
+      .from(bankAccounts)
+      .where(eq(bankAccounts.userId, userId)),
+    db
+      .select()
+      .from(bankBalanceSnapshots)
+      .where(eq(bankBalanceSnapshots.userId, userId)),
+    db
+      .select({ snapshotAt: portfolioSnapshots.snapshotAt, totalValue: portfolioSnapshots.totalValue })
+      .from(portfolioSnapshots)
+      .where(eq(portfolioSnapshots.userId, userId)),
+    db
+      .select({ date: transactions.date, amount: transactions.amount, category: transactions.category })
+      .from(transactions)
+      .where(eq(transactions.userId, userId)),
+  ]);
+
+  // ── Net worth: daily buckets with carry-forward of each account's last-known
+  // balance. Credit balances are amounts owed → liabilities. History starts the
+  // day capture started (cannot be backfilled — spec §9).
+  const creditAccounts = new Set(accounts.filter((a) => a.type === "credit").map((a) => a.id));
+  const day = (unix: number) => new Date(unix * 1000).toISOString().split("T")[0];
+
+  const allDays = new Set<string>();
+  for (const s of balanceSnaps) allDays.add(day(s.capturedAt));
+  for (const s of portfolioSnaps) allDays.add(day(s.snapshotAt));
+  const sortedDays = [...allDays].sort();
+
+  const snapsByAccount = new Map<string, { day: string; balance: number }[]>();
+  for (const s of balanceSnaps) {
+    const list = snapsByAccount.get(s.accountId) ?? [];
+    list.push({ day: day(s.capturedAt), balance: s.balanceCurrent ?? 0 });
+    snapsByAccount.set(s.accountId, list);
+  }
+  for (const list of snapsByAccount.values()) list.sort((a, b) => a.day.localeCompare(b.day));
+  const portfolioByDay = [...portfolioSnaps]
+    .sort((a, b) => a.snapshotAt - b.snapshotAt)
+    .map((s) => ({ day: day(s.snapshotAt), value: s.totalValue }));
+
+  const lastAtOrBefore = <T extends { day: string }>(list: T[], d: string): T | undefined => {
+    let found: T | undefined;
+    for (const item of list) {
+      if (item.day > d) break;
+      found = item;
+    }
+    return found;
+  };
+
+  const netWorth = sortedDays.map((d) => {
+    let bankTotal = 0;
+    for (const [accountId, list] of snapsByAccount) {
+      const snap = lastAtOrBefore(list, d);
+      if (!snap) continue;
+      bankTotal += creditAccounts.has(accountId) ? -snap.balance : snap.balance;
+    }
+    const portfolio = lastAtOrBefore(portfolioByDay, d)?.value ?? 0;
+    return { date: d, bank: bankTotal, portfolio, total: bankTotal + portfolio };
+  });
+
+  // ── Monthly buckets over the requested window
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - months);
+  const cutoffMonth = cutoff.toISOString().slice(0, 7); // YYYY-MM
+  const monthOf = (date: string) => date.slice(0, 7);
+
+  const trendMap = new Map<string, Map<string, number>>(); // month → category → spend
+  const flowMap = new Map<string, { income: number; expenses: number }>();
+  for (const t of txns) {
+    const m = monthOf(t.date);
+    if (m < cutoffMonth) continue;
+    const flow = flowMap.get(m) ?? { income: 0, expenses: 0 };
+    if (t.amount > 0) flow.income += t.amount;
+    else flow.expenses += Math.abs(t.amount);
+    flowMap.set(m, flow);
+
+    if (t.amount < 0) {
+      const cat = t.category ?? "uncategorized";
+      const catMap = trendMap.get(m) ?? new Map<string, number>();
+      catMap.set(cat, (catMap.get(cat) ?? 0) + Math.abs(t.amount));
+      trendMap.set(m, catMap);
+    }
+  }
+
+  const monthsSorted = [...new Set([...trendMap.keys(), ...flowMap.keys()])].sort();
+  const categoryTrends = monthsSorted.map((m) => ({
+    month: m,
+    categories: Object.fromEntries(trendMap.get(m) ?? []),
+  }));
+  const incomeVsExpenses = monthsSorted.map((m) => {
+    const flow = flowMap.get(m) ?? { income: 0, expenses: 0 };
+    return { month: m, ...flow, net: flow.income - flow.expenses };
+  });
+
+  return NextResponse.json({ netWorth, categoryTrends, incomeVsExpenses });
+}

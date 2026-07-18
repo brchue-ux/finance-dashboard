@@ -12,18 +12,24 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^1.0.0",
+    "@ai-sdk/anthropic": "^4.0.16",
+    "@ai-sdk/mcp": "^2.0.15",
+    "@anthropic-ai/sdk": "^0.112.3",
+    "@better-auth/expo": "^1.6.23",
     "@libsql/client": "^0.14.0",
-    "ai": "^4.0.0",
+    "ai": "^7.0.31",
     "better-auth": "^1.0.0",
     "drizzle-orm": "^0.44.0",
+    "googleapis": "^173.0.0",
     "next": "^15.5.20",
+    "node-cron": "^4.6.0",
     "plaid": "^29.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "snaptrade-typescript-sdk": "^2.0.0",
+    "snaptrade-typescript-sdk": "^10.0.18",
     "uuid": "^11.0.0",
-    "yahoo-finance2": "^2.13.0"
+    "yahoo-finance2": "^3.15.4",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
