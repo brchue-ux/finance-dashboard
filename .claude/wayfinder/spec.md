@@ -323,7 +323,7 @@ completed_at    INTEGER
 **Connection flow:**
 1. Backend: `POST /link/token/create` with `country_codes: ['CA']`, `products: ['transactions']`, `client_user_id`
 2. Frontend: Initialize Plaid Link widget with `link_token`
-3. For RBC (OAuth-based): user redirected to RBC login portal; `redirect_uri` must be registered in Plaid dashboard and updated when custom domain is set (see §10 Deployment Checklist)
+3. For RBC (OAuth-based): user redirected to RBC login portal; `redirect_uri` must be a frontend page URL registered in the Plaid dashboard (Team Settings -> API -> Allowed redirect URIs), updated when custom domain is set (see §10 Deployment Checklist). Leave `PLAID_REDIRECT_URI` unset until registered — Plaid rejects `linkTokenCreate` for every institution, not just RBC, if it's set but unregistered.
 4. Frontend: receives `public_token` on success
 5. Backend: exchange for `access_token` + `item_id` via `POST /item/public_token/exchange`
 6. Store `access_token` AES-256 encrypted in `bank_connections`
@@ -792,6 +792,9 @@ BETTER_AUTH_SECRET    -- Better Auth session secret
 PLAID_CLIENT_ID       -- Plaid API credentials
 PLAID_SECRET          -- Plaid API credentials
 PLAID_ENV             -- "sandbox" | "production"
+PLAID_REDIRECT_URI     -- Optional. RBC OAuth Link flow only; must be registered in Plaid
+                          dashboard first and must be a frontend page URL (not Railway/backend)
+                          -- unset until registered, or ALL institutions fail to link, not just RBC
 SNAPTRADE_CLIENT_ID   -- SnapTrade API credentials
 SNAPTRADE_CONSUMER_KEY
 TRADINGVIEW_WEBHOOK_SECRET  -- Shared secret for webhook validation
@@ -829,8 +832,8 @@ NEXT_PUBLIC_API_URL   -- Railway backend base URL
 8. Connect SnapTrade account (Wealthsimple) via in-app Settings → Connected Accounts
 9. Connect Plaid accounts (RBC, Tangerine, Scotiabank) via in-app Settings → Connected Accounts
 10. Set up TradingView alerts with Railway backend webhook URL + `TRADINGVIEW_WEBHOOK_SECRET` in alert message JSON. **TradingView plan note:** webhooks require at minimum the Essential plan — they are not available on the Free plan.
-11. **Register Railway URL as `redirect_uri` in Plaid dashboard** (required for RBC OAuth flow)
-12. **When custom domain is configured:** update Plaid dashboard `redirect_uri` to production domain
+11. **Register the frontend's production URL as `redirect_uri` in the Plaid dashboard** (Team Settings -> API -> Allowed redirect URIs), then set `PLAID_REDIRECT_URI` in Railway to that same URL. Required for RBC's OAuth Link flow only — leave unset until registered, since Plaid rejects `linkTokenCreate` for all institutions if it's set but unregistered.
+12. **When custom domain is configured:** update both the Plaid dashboard registration and `PLAID_REDIRECT_URI` to the production domain
 
 ### Scale Path
 

@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   index,
   integer,
@@ -8,19 +8,111 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-// ── users ────────────────────────────────────────────────────────────────────
-export const users = sqliteTable("users", {
+// ── user / session / account / verification (Better Auth) ─────────────────────
+// Generated via `npx @better-auth/cli generate` against lib/auth.ts.
+// This is the canonical identity table — app tables reference user.id, not a
+// separate `users` table.
+export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
-  email: text("email").unique().notNull(),
-  createdAt: integer("created_at").notNull(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: integer("email_verified", { mode: "boolean" })
+    .default(false)
+    .notNull(),
+  image: text("image"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .notNull(),
 });
+
+export const session = sqliteTable(
+  "session",
+  {
+    id: text("id").primaryKey(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    token: text("token").notNull().unique(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+  },
+  (t) => [index("session_userId_idx").on(t.userId)]
+);
+
+export const account = sqliteTable(
+  "account",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: integer("access_token_expires_at", { mode: "timestamp_ms" }),
+    refreshTokenExpiresAt: integer("refresh_token_expires_at", { mode: "timestamp_ms" }),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (t) => [index("account_userId_idx").on(t.userId)]
+);
+
+export const verification = sqliteTable(
+  "verification",
+  {
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    value: text("value").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (t) => [index("verification_identifier_idx").on(t.identifier)]
+);
+
+export const userRelations = relations(user, ({ many }) => ({
+  sessions: many(session),
+  accounts: many(account),
+}));
+
+export const sessionRelations = relations(session, ({ one }) => ({
+  user: one(user, { fields: [session.userId], references: [user.id] }),
+}));
+
+export const accountRelations = relations(account, ({ one }) => ({
+  user: one(user, { fields: [account.userId], references: [user.id] }),
+}));
 
 // ── bank_connections ─────────────────────────────────────────────────────────
 export const bankConnections = sqliteTable("bank_connections", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .notNull()
-    .references(() => users.id),
+    .references(() => user.id),
   institutionName: text("institution_name").notNull(), // "RBC" | "Tangerine" | "Scotiabank"
   plaidItemId: text("plaid_item_id").notNull(),
   plaidAccessToken: text("plaid_access_token").notNull(), // AES-256-GCM encrypted
@@ -34,7 +126,7 @@ export const bankAccounts = sqliteTable("bank_accounts", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .notNull()
-    .references(() => users.id),
+    .references(() => user.id),
   connectionId: text("connection_id")
     .notNull()
     .references(() => bankConnections.id),
@@ -50,7 +142,7 @@ export const transactions = sqliteTable("transactions", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .notNull()
-    .references(() => users.id),
+    .references(() => user.id),
   accountId: text("account_id")
     .notNull()
     .references(() => bankAccounts.id),
@@ -69,7 +161,7 @@ export const budgetEnvelopes = sqliteTable("budget_envelopes", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .notNull()
-    .references(() => users.id),
+    .references(() => user.id),
   name: text("name").notNull(),
   monthlyTarget: real("monthly_target").notNull(),
   categoryRules: text("category_rules").notNull(), // JSON: string[]
@@ -85,7 +177,7 @@ export const envelopeAllocations = sqliteTable(
     id: text("id").primaryKey(),
     userId: text("user_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => user.id),
     envelopeId: text("envelope_id")
       .notNull()
       .references(() => budgetEnvelopes.id),
@@ -101,7 +193,7 @@ export const wealthsimpleConnections = sqliteTable("wealthsimple_connections", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .notNull()
-    .references(() => users.id),
+    .references(() => user.id),
   snaptradeUserId: text("snaptrade_user_id").notNull(),
   snaptradeAuthToken: text("snaptrade_auth_token").notNull(), // AES-256-GCM encrypted
   status: text("status").notNull().default("active"), // "active" | "reconnect_required"
@@ -115,7 +207,7 @@ export const portfolioSnapshots = sqliteTable("portfolio_snapshots", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .notNull()
-    .references(() => users.id),
+    .references(() => user.id),
   snapshotAt: integer("snapshot_at").notNull(), // Unix timestamp
   totalValue: real("total_value").notNull(),
   cashValue: real("cash_value").notNull(),
@@ -128,7 +220,7 @@ export const holdings = sqliteTable("holdings", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .notNull()
-    .references(() => users.id),
+    .references(() => user.id),
   snapshotId: text("snapshot_id")
     .notNull()
     .references(() => portfolioSnapshots.id),
@@ -146,7 +238,7 @@ export const portfolioTransactions = sqliteTable("portfolio_transactions", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .notNull()
-    .references(() => users.id),
+    .references(() => user.id),
   date: text("date").notNull(), // ISO 8601
   type: text("type").notNull(), // "buy" | "sell" | "dividend" | "deposit" | "withdrawal"
   ticker: text("ticker"),
@@ -164,7 +256,7 @@ export const priceAlerts = sqliteTable(
     id: text("id").primaryKey(),
     userId: text("user_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => user.id),
     ticker: text("ticker").notNull(),
     holdingId: text("holding_id").references(() => holdings.id),
     label: text("label"),
@@ -201,7 +293,7 @@ export const alertFires = sqliteTable(
       .references(() => priceAlerts.id),
     userId: text("user_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => user.id),
     ticker: text("ticker").notNull(),
     conditionType: text("condition_type").notNull(),
     threshold: real("threshold").notNull(),
@@ -236,7 +328,7 @@ export const tradingviewAlerts = sqliteTable("tradingview_alerts", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .notNull()
-    .references(() => users.id),
+    .references(() => user.id),
   ticker: text("ticker").notNull(),
   conditionText: text("condition_text").notNull(),
   price: real("price"),
@@ -254,7 +346,7 @@ export const llmAnalysisCache = sqliteTable(
     id: text("id").primaryKey(),
     userId: text("user_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => user.id),
     view: text("view").notNull(), // "budget" | "portfolio"
     lastAnalyzedAt: integer("last_analyzed_at").notNull(),
     output: text("output").notNull(), // JSON: array of card objects
@@ -268,7 +360,7 @@ export const importJobs = sqliteTable("import_jobs", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .notNull()
-    .references(() => users.id),
+    .references(() => user.id),
   source: text("source").notNull(), // "google_sheets" | "csv"
   status: text("status").notNull().default("pending"), // "pending" | "processing" | "complete" | "failed"
   rowsImported: integer("rows_imported").default(0),

@@ -12,7 +12,14 @@ export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const backendUrl = process.env.BETTER_AUTH_URL ?? "http://localhost:3001";
+  // Required only for RBC's OAuth-based Link flow, and only once registered
+  // in the Plaid dashboard (Team Settings -> API -> Allowed redirect URIs).
+  // Plaid rejects the ENTIRE linkTokenCreate call (all institutions, not
+  // just OAuth ones) if redirect_uri is set but not registered — so this
+  // must stay unset in local/sandbox dev until that registration exists.
+  // Must point to a page in the FRONTEND app (it re-invokes Plaid Link
+  // client-side after the OAuth redirect), never a backend API route.
+  const redirectUri = process.env.PLAID_REDIRECT_URI;
 
   const response = await plaidClient.linkTokenCreate({
     user: { client_user_id: session.user.id },
@@ -20,8 +27,7 @@ export async function POST(req: NextRequest) {
     products: [Products.Transactions],
     country_codes: [CountryCode.Ca],
     language: "en",
-    // Required for RBC OAuth redirect flow
-    redirect_uri: `${backendUrl}/api/plaid/oauth-redirect`,
+    ...(redirectUri ? { redirect_uri: redirectUri } : {}),
   });
 
   return NextResponse.json({ link_token: response.data.link_token });

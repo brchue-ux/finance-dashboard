@@ -17,6 +17,7 @@ import { eq, and } from "drizzle-orm";
 import { decrypt } from "@/lib/crypto";
 import { plaidClient } from "@/lib/plaid";
 import { categorize } from "@/lib/categorization";
+import { syncAccountsForConnection } from "@/lib/plaid-accounts";
 import { v4 as uuidv4 } from "uuid";
 
 const DEBOUNCE_SECONDS = 120; // 2 minutes
@@ -56,6 +57,11 @@ export async function POST(req: NextRequest) {
     }
 
     const accessToken = decrypt(conn.plaidAccessToken);
+
+    // Keep account names/types current (handles renames and newly added
+    // accounts on an existing Item) before processing transactions below.
+    await syncAccountsForConnection(conn.id, userId, accessToken, conn.institutionName);
+
     let cursor: string | undefined;
     let hasMore = true;
 
@@ -69,28 +75,25 @@ export async function POST(req: NextRequest) {
 
       // Upsert added/modified transactions
       for (const txn of [...added, ...modified]) {
-        // Ensure the bank account exists
+        // Account rows are populated by syncAccountsForConnection above, from
+        // Plaid's real account metadata (name, mask, type) — not inferred
+        // from transaction data. If this lookup ever misses, that's a real
+        // bug (accountsGet and transactionsSync disagreeing on account_id
+        // scope for this Item) worth surfacing, not papering over with a
+        // placeholder row.
         const existingAcct = await db
           .select({ id: bankAccounts.id })
           .from(bankAccounts)
           .where(eq(bankAccounts.plaidAccountId, txn.account_id))
           .limit(1);
 
-        let accountId: string;
         if (existingAcct.length === 0) {
-          accountId = uuidv4();
-          await db.insert(bankAccounts).values({
-            id: accountId,
-            userId,
-            connectionId: conn.id,
-            plaidAccountId: txn.account_id,
-            name: txn.account_id, // will be enriched on next full account fetch
-            type: "chequing",
-            institution: conn.institutionName,
-          });
-        } else {
-          accountId = existingAcct[0].id;
+          console.error(
+            `Skipping transaction ${txn.transaction_id}: no bank_accounts row for Plaid account_id ${txn.account_id} (connection ${conn.id})`
+          );
+          continue;
         }
+        const accountId = existingAcct[0].id;
 
         const category = categorize(txn.name, parsedEnvelopes);
 
