@@ -13,3 +13,11 @@ dist/
 
 # Real financial data — never commit
 download-transactions*.csv
+# Local SQLite DBs hold real financial data — never track
+local.db
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
