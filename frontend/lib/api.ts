@@ -1,47 +1,37 @@
 /**
  * API client — thin wrapper around fetch pointing at the Railway backend.
- * Session token is stored in Expo SecureStore and sent as a Bearer header.
+ * Session state lives in the better-auth expo client's SecureStore-backed
+ * cookie jar (see lib/auth.ts); this file just rides on it for routes that
+ * aren't better-auth endpoints themselves.
  */
-import * as SecureStore from "expo-secure-store";
-import Constants from "expo-constants";
+import { Platform } from "react-native";
+import { getApiUrl } from "./env";
+import { authClient } from "./auth";
 
-const API_URL =
-  (Constants.expoConfig?.extra?.apiUrl as string | undefined) ??
-  "http://localhost:3001";
-
-const SESSION_KEY = "session_token";
-
-export function getApiUrl() {
-  return API_URL;
-}
-
-export async function getSessionToken(): Promise<string | null> {
-  return SecureStore.getItemAsync(SESSION_KEY);
-}
-
-export async function setSessionToken(token: string) {
-  await SecureStore.setItemAsync(SESSION_KEY, token);
-}
-
-export async function clearSessionToken() {
-  await SecureStore.deleteItemAsync(SESSION_KEY);
-}
+const API_URL = getApiUrl();
 
 async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = await getSessionToken();
+  // Native RN has no cookie jar, so we replay the plugin-stored cookie as a
+  // header. On web the browser owns the (HttpOnly) cookie and forbids setting
+  // the Cookie header from JS — credentials:"include" attaches it instead.
+  const cookie = Platform.OS === "web" ? null : authClient.getCookie();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    ...(cookie ? { Cookie: cookie } : {}),
     ...(options.headers as Record<string, string>),
   };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
+  const res = await fetch(`${API_URL}${path}`, {
+    ...options,
+    credentials: "include",
+    headers,
+  });
 
   if (res.status === 401) {
-    await clearSessionToken();
+    await authClient.signOut();
     throw new Error("Unauthorized");
   }
 

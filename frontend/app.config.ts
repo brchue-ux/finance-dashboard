@@ -29,7 +29,7 @@ const config: ExpoConfig = {
     output: "static",
     favicon: "./assets/favicon.png",
   },
-  plugins: ["expo-router", "expo-secure-store"],
+  plugins: ["expo-router", "expo-secure-store", "expo-web-browser"],
   scheme: "finance-dashboard",
   extra: {
     apiUrl: process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001",

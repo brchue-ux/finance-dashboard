@@ -10,7 +10,8 @@ import {
   Modal,
 } from "react-native";
 import { COLORS } from "@/constants/theme";
-import { getApiUrl, getSessionToken } from "@/lib/api";
+import { getApiUrl } from "@/lib/env";
+import { authClient } from "@/lib/auth";
 
 interface Message {
   role: "user" | "assistant";
@@ -52,12 +53,15 @@ export function ConversationSheet({
     setMessages([...newMessages, assistantMessage]);
 
     try {
-      const token = await getSessionToken();
+      // Native: replay the plugin-stored cookie as a header (no cookie jar).
+      // Web: browser owns the HttpOnly cookie; credentials:"include" sends it.
+      const cookie = Platform.OS === "web" ? null : authClient.getCookie();
       const res = await fetch(`${getApiUrl()}/api/llm/chat`, {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(cookie ? { Cookie: cookie } : {}),
         },
         body: JSON.stringify({ view, messages: newMessages, alertContext }),
       });

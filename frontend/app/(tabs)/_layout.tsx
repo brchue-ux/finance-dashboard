@@ -1,7 +1,8 @@
-import { Tabs } from "expo-router";
-import { View, Text } from "react-native";
+import { Tabs, Redirect } from "expo-router";
+import { View, Text, ActivityIndicator } from "react-native";
 import { COLORS } from "@/constants/theme";
 import { useAlerts } from "@/hooks/useAlerts";
+import { useSession } from "@/lib/auth";
 
 function AlertsBadge() {
   const { data } = useAlerts();
@@ -29,6 +30,29 @@ function AlertsBadge() {
 }
 
 export default function TabsLayout() {
+  const { data: session, isPending } = useSession();
+
+  // Hold rendering until the session resolves, so we don't flash the tabs
+  // (and fire authed API calls) before redirecting an unauthenticated user.
+  if (isPending) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: COLORS.background,
+        }}
+      >
+        <ActivityIndicator color={COLORS.brandPurple} />
+      </View>
+    );
+  }
+
+  if (!session) {
+    return <Redirect href="/(auth)/login" />;
+  }
+
   return (
     <Tabs
       screenOptions={{
