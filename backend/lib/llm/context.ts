@@ -58,6 +58,7 @@ export async function assembleBudgetContext(userId: string): Promise<string> {
 
   return JSON.stringify({
     currentDate: now.toISOString(),
+    amountConvention: "Transaction amounts are signed: negative = money out (spending), positive = money in (income/refund). The 'direction' field on each transaction states this explicitly.",
     bankConnections: bankConns,
     envelopes: envelopes.map((e) => ({
       name: e.name,
@@ -65,7 +66,11 @@ export async function assembleBudgetContext(userId: string): Promise<string> {
       sortOrder: e.sortOrder,
     })),
     allocations,
-    recentTransactions: recentTxns,
+    // Label each row's direction so the model never has to infer it from the sign
+    recentTransactions: recentTxns.map((t) => ({
+      ...t,
+      direction: t.amount < 0 ? "outflow" : "inflow",
+    })),
     olderMonthlySummaries: olderSummaries,
     rollupActive: useRollup,
   }, null, 2);

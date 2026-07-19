@@ -17,7 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
 import { parseCsv } from "@/lib/import/csv";
-import { importRows, type NormalizedRow } from "@/lib/import/pipeline";
+import { importRows, normalizeMappedRows } from "@/lib/import/pipeline";
 import { withJobRun } from "@/lib/jobs/job-runs";
 
 const bodySchema = z.object({
@@ -42,42 +42,9 @@ export async function POST(req: NextRequest) {
   const { csv, mapping, negateAmounts } = parsed.data;
 
   const rows = parseCsv(csv);
-  if (rows.length < 2) {
-    return NextResponse.json({ error: "CSV needs a header row and at least one data row" }, { status: 400 });
-  }
-
-  const header = rows[0].map((h) => h.trim());
-  const col = (name: string) => header.indexOf(name);
-  const dateIdx = col(mapping.date);
-  const descIdx = col(mapping.description);
-  const amountIdx = col(mapping.amount);
-  const categoryIdx = mapping.category ? col(mapping.category) : -1;
-  if (dateIdx === -1 || descIdx === -1 || amountIdx === -1) {
-    return NextResponse.json(
-      { error: `Mapped column not found in header: ${header.join(", ")}` },
-      { status: 400 }
-    );
-  }
-
-  const normalized: NormalizedRow[] = [];
-  const errors: string[] = [];
-  for (let i = 1; i < rows.length; i++) {
-    const r = rows[i];
-    const rawDate = (r[dateIdx] ?? "").trim();
-    const date = new Date(rawDate);
-    const amount = parseFloat((r[amountIdx] ?? "").replace(/[$,]/g, ""));
-    if (Number.isNaN(date.getTime()) || Number.isNaN(amount)) {
-      errors.push(`row ${i + 1}: unparseable date "${rawDate}" or amount "${r[amountIdx]}"`);
-      continue;
-    }
-    normalized.push({
-      date: date.toISOString().split("T")[0],
-      description: (r[descIdx] ?? "").trim(),
-      amount: negateAmounts ? -amount : amount,
-      ...(categoryIdx !== -1 && r[categoryIdx]?.trim()
-        ? { category: r[categoryIdx].trim() }
-        : {}),
-    });
+  const { normalized, errors, headerError } = normalizeMappedRows(rows, mapping, negateAmounts);
+  if (headerError) {
+    return NextResponse.json({ error: `CSV ${headerError}` }, { status: 400 });
   }
 
   const result = await withJobRun(

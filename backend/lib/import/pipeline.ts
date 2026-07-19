@@ -21,6 +21,60 @@ export interface NormalizedRow {
   category?: string; // optional source-provided category; app rules win when absent
 }
 
+export interface ColumnMapping {
+  date: string;
+  description: string;
+  amount: string;
+  category?: string;
+}
+
+/**
+ * Shared row normalization for every import source (CSV upload, Google Sheets,
+ * Excel) — all three arrive as a `string[][]` grid with a header row, so the
+ * header-mapping, date/amount parsing, and per-row error collection live here
+ * once instead of in each route.
+ * `headerError` is set for a whole-file problem (no header, missing mapped
+ * column); `errors` collects individual unparseable rows (the rest still import).
+ */
+export function normalizeMappedRows(
+  rows: string[][],
+  mapping: ColumnMapping,
+  negateAmounts?: boolean
+): { normalized: NormalizedRow[]; errors: string[]; headerError?: string } {
+  if (rows.length < 2) {
+    return { normalized: [], errors: [], headerError: "needs a header row and at least one data row" };
+  }
+  const header = rows[0].map((h) => h.trim());
+  const col = (name: string) => header.indexOf(name);
+  const dateIdx = col(mapping.date);
+  const descIdx = col(mapping.description);
+  const amountIdx = col(mapping.amount);
+  const categoryIdx = mapping.category ? col(mapping.category) : -1;
+  if (dateIdx === -1 || descIdx === -1 || amountIdx === -1) {
+    return { normalized: [], errors: [], headerError: `Mapped column not found in header: ${header.join(", ")}` };
+  }
+
+  const normalized: NormalizedRow[] = [];
+  const errors: string[] = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const rawDate = (r[dateIdx] ?? "").trim();
+    const date = new Date(rawDate);
+    const amount = parseFloat((r[amountIdx] ?? "").replace(/[$,]/g, ""));
+    if (Number.isNaN(date.getTime()) || Number.isNaN(amount)) {
+      errors.push(`row ${i + 1}: unparseable date "${rawDate}" or amount "${r[amountIdx]}"`);
+      continue;
+    }
+    normalized.push({
+      date: date.toISOString().split("T")[0],
+      description: (r[descIdx] ?? "").trim(),
+      amount: negateAmounts ? -amount : amount,
+      ...(categoryIdx !== -1 && r[categoryIdx]?.trim() ? { category: r[categoryIdx].trim() } : {}),
+    });
+  }
+  return { normalized, errors };
+}
+
 const MANUAL_ACCOUNT_NAME = "Imported transactions";
 
 export async function ensureManualAccount(userId: string): Promise<string> {

@@ -15,6 +15,7 @@
     "@ai-sdk/anthropic": "^4.0.16",
     "@ai-sdk/mcp": "^2.0.15",
     "@anthropic-ai/sdk": "^0.112.3",
+    "@azure/msal-node": "^5.4.1",
     "@better-auth/expo": "^1.6.23",
     "@libsql/client": "^0.14.0",
     "ai": "^7.0.31",

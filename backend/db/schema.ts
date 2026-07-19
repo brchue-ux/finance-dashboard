@@ -448,3 +448,34 @@ export const ohlcvCache = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.ticker, t.range] })]
 );
+
+// ── spreadsheet_connections ───────────────────────────────────────────────────
+// Live Google Sheets / Excel import connections (spec §5.7 / Tickets 008/004).
+// Mirrors the dedicated encrypted-token pattern of wealthsimple_connections
+// rather than reusing Better Auth's login `account` table — data-access OAuth is
+// a different concern from sign-in, and Excel isn't a login provider at all.
+// Tokens are AES-256-GCM encrypted (lib/crypto), same as Plaid/SnapTrade tokens.
+export const spreadsheetConnections = sqliteTable(
+  "spreadsheet_connections",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id),
+    provider: text("provider").notNull(), // "google_sheets" | "excel"
+    accessToken: text("access_token").notNull(), // encrypted
+    refreshToken: text("refresh_token"), // encrypted; may be absent if provider omits it
+    expiresAt: integer("expires_at"), // unix seconds — when the access token expires
+    scope: text("scope"),
+    // Source pointer — set after the user picks a file/range post-connect (nullable until then)
+    externalFileId: text("external_file_id"), // spreadsheetId (Google) / driveItem id (Excel)
+    externalFileName: text("external_file_name"),
+    worksheet: text("worksheet"), // sheet/tab name or A1 range
+    mapping: text("mapping"), // JSON: { date, description, amount, category? } column headers
+    negateAmounts: integer("negate_amounts"), // boolean; source uses positive = debit
+    status: text("status").notNull().default("active"), // "active" | "reauth_required"
+    lastSyncedAt: integer("last_synced_at"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [index("idx_spreadsheet_connections_user").on(t.userId)]
+);
