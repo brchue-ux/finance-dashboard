@@ -75,6 +75,13 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="banks"
+        options={{
+          title: "Banks",
+          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>🏦</Text>,
+        }}
+      />
+      <Tabs.Screen
         name="portfolio"
         options={{
           title: "Portfolio",
