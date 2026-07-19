@@ -6,6 +6,7 @@ import {
   ScrollView,
   View,
   Text,
+  Pressable,
   RefreshControl,
   ActivityIndicator,
 } from "react-native";
@@ -56,9 +57,12 @@ export default function PortfolioScreen() {
         }
       >
         {/* Header */}
-        <GradientText style={{ fontSize: 28, fontWeight: "800", marginBottom: 16 }}>
-          Portfolio
-        </GradientText>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <GradientText style={{ fontSize: 28, fontWeight: "800" }}>Portfolio</GradientText>
+          <Pressable onPress={() => router.push("/reports")} hitSlop={10}>
+            <Text style={{ fontSize: 20 }}>📊</Text>
+          </Pressable>
+        </View>
 
         {/* Portfolio hero */}
         {snapshot ? (

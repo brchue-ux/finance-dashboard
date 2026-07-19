@@ -20,6 +20,7 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="manage-alerts" options={{ presentation: "card" }} />
         <Stack.Screen name="account/[id]" options={{ presentation: "card" }} />
+        <Stack.Screen name="reports" options={{ presentation: "card" }} />
       </Stack>
     </QueryClientProvider>
   );
