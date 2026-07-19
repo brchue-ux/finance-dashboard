@@ -84,8 +84,11 @@ async function submitCardBatch(userId: string): Promise<void> {
     // explicit no-fabrication clause instead of silently missing tools
     const systemSuffix = mcpServers ? "" : NO_INDICATOR_DATA_CLAUSE;
 
+    // custom_id must match Anthropic's ^[a-zA-Z0-9_-]{1,64}$ — no colon. jobId
+    // is a hyphenated UUID (no underscore), so "_" is an unambiguous separator
+    // for the pollPendingBatches() split below.
     const makeRequest = (view: "budget" | "portfolio", context: string) => ({
-      custom_id: `${jobId}:${view}`,
+      custom_id: `${jobId}_${view}`,
       params: {
         model: MODEL,
         max_tokens: MAX_OUTPUT_TOKENS,
@@ -137,7 +140,7 @@ export async function pollPendingBatches(): Promise<void> {
       let failed = 0;
 
       for await (const result of await anthropicClient.beta.messages.batches.results(meta.batchId)) {
-        const view = result.custom_id.split(":").pop() as "budget" | "portfolio";
+        const view = result.custom_id.split("_").pop() as "budget" | "portfolio";
         if (result.result.type !== "succeeded") {
           failed++;
           console.error(`[nightly] batch item ${result.custom_id}: ${result.result.type}`);
