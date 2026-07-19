@@ -14,7 +14,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { COLORS } from "@/constants/theme";
 import {
   useStandingAlerts,
@@ -49,13 +49,15 @@ function timeAgo(ts: number): string {
 
 export default function ManageAlertsScreen() {
   const router = useRouter();
+  // Arriving from Holding Detail's "Set alert" pre-fills the symbol + opens the form.
+  const params = useLocalSearchParams<{ ticker?: string }>();
   const { data: alerts, isLoading } = useStandingAlerts();
   const createAlert = useCreateAlert();
   const updateAlert = useUpdateStandingAlert();
   const deleteAlert = useDeleteStandingAlert();
 
-  const [showForm, setShowForm] = useState(false);
-  const [ticker, setTicker] = useState("");
+  const [showForm, setShowForm] = useState(!!params.ticker);
+  const [ticker, setTicker] = useState((params.ticker ?? "").toUpperCase());
   const [condition, setCondition] = useState<AlertConditionType>("price_above");
   const [thresholdText, setThresholdText] = useState("");
   const [label, setLabel] = useState("");
