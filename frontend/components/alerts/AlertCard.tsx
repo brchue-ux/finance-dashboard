@@ -1,17 +1,22 @@
 import { View, Text, Pressable } from "react-native";
 import { COLORS } from "@/constants/theme";
-import type { TradingViewAlert } from "@/hooks/useAlerts";
+import type { UnifiedAlert } from "@/hooks/useAlerts";
 
 interface AlertCardProps {
-  alert: TradingViewAlert;
+  alert: UnifiedAlert;
   onPress: () => void;
   onAnalyze: () => void;
 }
 
-const SEVERITY_COLORS = {
+const SEVERITY_COLORS: Record<UnifiedAlert["severity"], string> = {
   red: "#EF4444",
   yellow: "#F59E0B",
   green: "#22C55E",
+};
+
+const SOURCE_LABEL: Record<UnifiedAlert["source"], string> = {
+  native: "Price alert",
+  tradingview: "TradingView",
 };
 
 function timeAgo(ts: number): string {
@@ -55,14 +60,14 @@ export function AlertCard({ alert, onPress, onAnalyze }: AlertCardProps) {
           <Text style={{ color: COLORS.textPrimary, fontWeight: "700", fontSize: 15 }}>
             {alert.ticker}
           </Text>
-          <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>{timeAgo(alert.receivedAt)}</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>{timeAgo(alert.timestamp)}</Text>
         </View>
         <Text style={{ color: COLORS.textMuted, fontSize: 13, marginBottom: 6 }}>
-          {alert.conditionText}
-          {alert.price ? ` · $${alert.price.toFixed(2)}` : ""}
-          {alert.interval ? ` · ${alert.interval}` : ""}
+          {alert.conditionLabel}
+          {alert.price != null ? ` · $${alert.price.toFixed(2)}` : ""}
+          {` · ${SOURCE_LABEL[alert.source]}`}
         </Text>
-        <Pressable onPress={onAnalyze}>
+        <Pressable onPress={onAnalyze} hitSlop={8}>
           <Text style={{ color: COLORS.brandPurple, fontSize: 13, fontWeight: "600" }}>
             Analyze with Claude →
           </Text>
