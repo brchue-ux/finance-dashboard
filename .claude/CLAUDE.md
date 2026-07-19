@@ -3,6 +3,49 @@
 ## Active Projects
 
 ### Finance Intelligence Dashboard (Wayfinder map)
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- ▛▀▀ CURRENT STATE — READ THIS FIRST, IT IS THE AUTHORITATIVE TRUTH ▀▀▜ -->
+<!-- Everything BELOW this block is historical layering kept for context.    -->
+<!-- If this block and anything below disagree, THIS BLOCK WINS.             -->
+<!-- Last updated: 2026-07-18 (end of the backend-completion session).       -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+## ⇒ START HERE — Finance Dashboard current state (2026-07-18)
+
+**Phase: BACKEND COMPLETE + VERIFIED. FRONTEND NOT STARTED. Next work = the frontend.**
+
+**Repo:** `~/projects/home_budget_app` (Linux homeserver) ⇄ `C:\Users\bchue\finance-dashboard\` (Windows). GitHub: `brchue-ux/finance-dashboard` (private). Latest pushed commit: **`fa76d24`** ("Backend completion pass"). npm workspaces monorepo (`backend`, `frontend`).
+
+**Gate for building (the old "ignore my previous point" phrase rule is REVOKED — see STANDING RULE below):** build a thing only once everything it depends on is built + working. User's order: **all backend done+verified before any frontend.**
+
+**What is DONE and LIVE-VERIFIED this session** (exercised against a running dev server with real data/accounts, not just typecheck):
+- Auth (Better Auth + `@better-auth/expo`), CORS middleware, `/api/portfolio` (credential-leak fix holds), `/api/budget`, `/api/reports`, `/api/system/{status,jobs}`
+- LLM advisory chat — real Anthropic v7 streaming; transaction-sign accuracy fixed (inflow/outflow labels + AMOUNT CONVENTION prompt)
+- SnapTrade connect (sandbox: user registered, secret stored encrypted, no leak)
+- Native alert poller (`yahoo-finance2@3` `quote()` + `marketState` gate), TradingView webhook (per-user hashed secret, no `DEFAULT_USER`), mark-as-read, standing-alert CRUD
+- Plaid sandbox sync (enrichment fields, balance snapshots)
+- Nightly batch: submit verified after fixing a real bug (`custom_id` colon → Anthropic 400); collection runs via the `batch_poll` cron
+- **Banks tab backend** (`/api/banks`, `/api/banks/[id]/transactions`) — built this session, verified
+- **CSV import — verified CORRECT on 1,754 real RBC Visa transactions** (right dates, right signs, dedup working). Those rows are in `local.db` now (local, gitignored).
+- **Google Sheets live import** — OAuth + live read verified end-to-end. NOTE: the user's own "2026 Budget Dashboard" sheet is a *dashboard template, not a transaction ledger*, so it is NOT a usable import source (testing caught it silently mis-parsing year-less dates + expense signs). The importer works; that sheet just isn't the right input.
+
+**The ONE open backend loose end:**
+- **Excel/Graph live import — OAuth chain fully verified; full file round-trip blocked on account, not code.** Verified working end-to-end: consent → code exchange → encrypted MSAL token-cache stored → `acquireTokenSilent` returns a valid token → authenticated Graph call reaches Microsoft. The only gap: the account the user authorized with is a **work/org tenant with NO OneDrive** (Graph returns "Tenant does not have a SPO license"), so there were no files to read. To finish the file round-trip: re-authorize with a **personal** Microsoft account (outlook/hotmail/live) that has a OneDrive containing a flat `Date|Description|Amount` `.xlsx` — regenerate consent via `GET /api/import/excel/start` (seed session → follow `Location`), user approves + copies the `code=` from the failed-to-load `localhost:3011` callback, exchange server-side via `exchangeExcelCode`, then `POST /api/import/excel/sync` with `{file, worksheet, mapping}`. Creds in `.env.local` + `~/.secrets/microsoft-oauth.txt`. **Practical note:** if the user has no personal OneDrive, live-Excel is moot for them and the CSV path already ingests Excel exports (verified correct on 1,754 real rows) — so this may simply not need finishing.
+
+**NOT STARTED — the next major chunk (frontend, Expo app):** Bearer-auth client (`@better-auth/expo/client`, SecureStore), account-connection UI (Plaid Hosted Link + SnapTrade, both backend-ready), 4-step onboarding wizard, Holding Detail (Lightweight Charts in `react-native-webview`), the new Banks tab UI, Reports screen, alerts re-typing to the unified feed shape. All of these have working backend endpoints already.
+
+**How to resume / run the app:**
+- Dev server: from `backend/`, `npx next dev --port 3011` (port 3001 is taken by an unrelated container; 3011 is the convention here). Env auto-loads `backend/.env.local`.
+- `.env.local` is POPULATED + working for: Anthropic, Plaid sandbox, SnapTrade sandbox, Google OAuth, Microsoft OAuth, auth/seed. Only `ALPHA_VANTAGE_API_KEY` is still empty (OHLCV fallback only — Yahoo primary works). File is gitignored; secrets backed up in `~/.secrets/`.
+- Seed login for API testing: `dev@example.com` / password in `~/.secrets/finance-dashboard-local-dev-seed.txt`. Sign in via `POST /api/auth/sign-in/email` to get a session cookie, then hit protected routes.
+- Run scripts via the hoisted tsx: `node --env-file=.env.local ../node_modules/.bin/tsx <script>` (workspace hoisting — `backend/node_modules/.bin` is nearly empty).
+- **Uncommitted after this session:** `.claude/CLAUDE.md` (this update) + `.gitignore` (added the real CSV). `local.db` intentionally never committed.
+
+**Authoritative detail lives in:** `spec.md` (what to build), `remediation-decisions-2026-07-18.md` (why every decision), and the "Build status" / "Backend/Frontend Contract Gaps" sections below (kept current).
+
+<!-- ═══════════ END START-HERE BLOCK — historical detail follows ═══════════ -->
+
 A personal finance intelligence dashboard integrating Wealthsimple, bank transactions (RBC + Tangerine + Scotiabank), TradingView, and the Claude API (advisory engine). **Spec status: build-ready at the decision level — remediation decisions folded into `spec.md` on 2026-07-18.** `spec.md` is the buildable source of truth; `remediation-decisions-2026-07-18.md` is the decision-history record (the *why* behind every 2026-07-18 change). The sections below are historical status tracking — trust `spec.md` over them where they differ.
 
 **Culmination pass: backend implemented 2026-07-18, session ended on hitting usage limits before this doc was updated to match.** A follow-up session (2026-07-18, this doc's author) found the working tree far ahead of what this file described — verified for real (typecheck, file-by-file diff reading, then live endpoint exercise against the running server), not assumed. See "Build status" below for the corrected picture. **Frontend is still fully unbuilt.**

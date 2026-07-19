@@ -10,3 +10,6 @@ dist/
 /handoff-*.md
 .autosync
 .claude/settings.local.json
+
+# Real financial data — never commit
+download-transactions*.csv
