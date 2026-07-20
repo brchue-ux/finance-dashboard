@@ -1,4 +1,4 @@
-import { View, Text } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { COLORS } from "@/constants/theme";
 import type { Transaction } from "@/hooks/useBudget";
 
@@ -6,6 +6,12 @@ interface TransactionFeedProps {
   transactions: Transaction[];
   /** Transaction id to visually mark — set when arriving from a notable card. */
   highlightId?: string;
+  /**
+   * When provided, rows become tappable to split. Only offered where a
+   * transaction has real context (per-account history), not on the blended
+   * Budget feed, where the same row appears without its account.
+   */
+  onSplit?: (txn: Transaction) => void;
 }
 
 function fmt(amount: number) {
@@ -13,15 +19,17 @@ function fmt(amount: number) {
   return amount < 0 ? `-$${abs.toFixed(2)}` : `+$${abs.toFixed(2)}`;
 }
 
-export function TransactionFeed({ transactions, highlightId }: TransactionFeedProps) {
+export function TransactionFeed({ transactions, highlightId, onSplit }: TransactionFeedProps) {
   return (
     <View>
       <Text style={{ color: COLORS.textPrimary, fontWeight: "700", fontSize: 16, marginBottom: 12 }}>
         Transactions
       </Text>
       {transactions.slice(0, 30).map((txn) => (
-        <View
+        <Pressable
           key={txn.id}
+          onPress={onSplit ? () => onSplit(txn) : undefined}
+          disabled={!onSplit}
           style={{
             flexDirection: "row",
             justifyContent: "space-between",
@@ -61,7 +69,7 @@ export function TransactionFeed({ transactions, highlightId }: TransactionFeedPr
           >
             {fmt(txn.amount)}
           </Text>
-        </View>
+        </Pressable>
       ))}
     </View>
   );

@@ -6,6 +6,7 @@
 import { db } from "@/db";
 import {
   transactions,
+  transactionSplits,
   budgetEnvelopes,
   envelopeAllocations,
   portfolioSnapshots,
@@ -15,6 +16,7 @@ import {
   wealthsimpleConnections,
 } from "@/db/schema";
 import { eq, and, gte, desc } from "drizzle-orm";
+import { attributeSpend, type SplitRow } from "@/lib/budget/summarize";
 
 const ROLLUP_THRESHOLD = 5_000; // named constant per spec §8
 
@@ -30,6 +32,15 @@ export async function assembleBudgetContext(userId: string): Promise<string> {
     .from(transactions)
     .where(eq(transactions.userId, userId))
     .orderBy(desc(transactions.date));
+
+  const splits: SplitRow[] = await db
+    .select({
+      transactionId: transactionSplits.transactionId,
+      category: transactionSplits.category,
+      amount: transactionSplits.amount,
+    })
+    .from(transactionSplits)
+    .where(eq(transactionSplits.userId, userId));
 
   const envelopes = await db
     .select()
@@ -48,12 +59,19 @@ export async function assembleBudgetContext(userId: string): Promise<string> {
 
   const useRollup = allTxns.length > ROLLUP_THRESHOLD;
 
+  const splitsByTxn = new Map<string, SplitRow[]>();
+  for (const sp of splits) {
+    const list = splitsByTxn.get(sp.transactionId);
+    if (list) list.push(sp);
+    else splitsByTxn.set(sp.transactionId, [sp]);
+  }
+
   const recentTxns = allTxns.filter((t) => t.date >= cutoffDate);
   const olderTxns = useRollup ? allTxns.filter((t) => t.date < cutoffDate) : [];
 
   // Monthly summaries for older data when rollup is active
   const olderSummaries = useRollup
-    ? summarizeByMonth(olderTxns)
+    ? summarizeByMonth(olderTxns, splits)
     : [];
 
   return JSON.stringify({
@@ -67,10 +85,18 @@ export async function assembleBudgetContext(userId: string): Promise<string> {
     })),
     allocations,
     // Label each row's direction so the model never has to infer it from the sign
-    recentTransactions: recentTxns.map((t) => ({
-      ...t,
-      direction: t.amount < 0 ? "outflow" : "inflow",
-    })),
+    splitConvention:
+      "A transaction with a non-empty 'splits' array is divided across several envelopes. Its parts REPLACE its own 'category' — count the splits, never both, or you will double-count the spend.",
+    recentTransactions: recentTxns.map((t) => {
+      const parts = splitsByTxn.get(t.id);
+      return {
+        ...t,
+        direction: t.amount < 0 ? "outflow" : "inflow",
+        ...(parts
+          ? { splits: parts.map((p) => ({ category: p.category, amount: p.amount })) }
+          : {}),
+      };
+    }),
     olderMonthlySummaries: olderSummaries,
     rollupActive: useRollup,
   }, null, 2);
@@ -124,14 +150,17 @@ export async function assemblePortfolioContext(userId: string): Promise<string> 
 }
 
 function summarizeByMonth(
-  txns: { date: string; amount: number; category: string | null }[]
+  txns: { id: string; date: string; amount: number; category: string | null }[],
+  splits: SplitRow[] = []
 ): Array<{ yearMonth: string; summaries: Record<string, number> }> {
   const map = new Map<string, Record<string, number>>();
-  for (const t of txns) {
-    const ym = t.date.slice(0, 7); // "YYYY-MM"
+  // Rolled-up months are the model's only view of older spending, so they have
+  // to attribute splits the same way the live months do.
+  for (const a of attributeSpend(txns, splits)) {
+    const ym = a.transaction.date.slice(0, 7); // "YYYY-MM"
     if (!map.has(ym)) map.set(ym, {});
-    const cat = t.category ?? "uncategorized";
-    map.get(ym)![cat] = (map.get(ym)![cat] ?? 0) + t.amount;
+    const cat = a.category ?? "uncategorized";
+    map.get(ym)![cat] = (map.get(ym)![cat] ?? 0) + a.amount;
   }
   return Array.from(map.entries())
     .sort(([a], [b]) => a.localeCompare(b))

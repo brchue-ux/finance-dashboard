@@ -45,10 +45,12 @@ export interface SplitRow {
  * ways, which would double-count the spend. An unsplit transaction keeps its
  * own category, so nothing existing changes behaviour.
  */
-export function attributeSpend(
-  monthTxns: TransactionRow[],
+export function attributeSpend<
+  T extends { id: string; amount: number; category: string | null },
+>(
+  monthTxns: T[],
   splits: SplitRow[]
-): { transaction: TransactionRow; category: string | null; amount: number }[] {
+): { transaction: T; category: string | null; amount: number }[] {
   const byTransaction = new Map<string, SplitRow[]>();
   for (const s of splits) {
     const list = byTransaction.get(s.transactionId);
@@ -56,7 +58,7 @@ export function attributeSpend(
     else byTransaction.set(s.transactionId, [s]);
   }
 
-  const out: { transaction: TransactionRow; category: string | null; amount: number }[] = [];
+  const out: { transaction: T; category: string | null; amount: number }[] = [];
   for (const t of monthTxns) {
     const rows = byTransaction.get(t.id);
     if (rows && rows.length > 0) {

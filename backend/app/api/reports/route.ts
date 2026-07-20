@@ -9,8 +9,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
-import { bankAccounts, bankBalanceSnapshots, portfolioSnapshots, transactions } from "@/db/schema";
+import { bankAccounts, bankBalanceSnapshots, portfolioSnapshots, transactions, transactionSplits } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { attributeSpend } from "@/lib/budget/summarize";
 
 export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const months = Math.min(parseInt(searchParams.get("months") ?? "12", 10) || 12, 60);
 
-  const [accounts, balanceSnaps, portfolioSnaps, txns] = await Promise.all([
+  const [accounts, balanceSnaps, portfolioSnaps, txns, splits] = await Promise.all([
     db
       .select({ id: bankAccounts.id, type: bankAccounts.type })
       .from(bankAccounts)
@@ -34,9 +35,22 @@ export async function GET(req: NextRequest) {
       .from(portfolioSnapshots)
       .where(eq(portfolioSnapshots.userId, userId)),
     db
-      .select({ date: transactions.date, amount: transactions.amount, category: transactions.category })
+      .select({
+        id: transactions.id,
+        date: transactions.date,
+        amount: transactions.amount,
+        category: transactions.category,
+      })
       .from(transactions)
       .where(eq(transactions.userId, userId)),
+    db
+      .select({
+        transactionId: transactionSplits.transactionId,
+        category: transactionSplits.category,
+        amount: transactionSplits.amount,
+      })
+      .from(transactionSplits)
+      .where(eq(transactionSplits.userId, userId)),
   ]);
 
   // ── Net worth: daily buckets with carry-forward of each account's last-known
@@ -89,6 +103,8 @@ export async function GET(req: NextRequest) {
 
   const trendMap = new Map<string, Map<string, number>>(); // month → category → spend
   const flowMap = new Map<string, { income: number; expenses: number }>();
+  // Income vs expenses is a cash-flow view, so it stays on the parent amount —
+  // splitting a purchase across envelopes doesn't change what left the account.
   for (const t of txns) {
     const m = monthOf(t.date);
     if (m < cutoffMonth) continue;
@@ -96,13 +112,17 @@ export async function GET(req: NextRequest) {
     if (t.amount > 0) flow.income += t.amount;
     else flow.expenses += Math.abs(t.amount);
     flowMap.set(m, flow);
+  }
 
-    if (t.amount < 0) {
-      const cat = t.category ?? "uncategorized";
-      const catMap = trendMap.get(m) ?? new Map<string, number>();
-      catMap.set(cat, (catMap.get(cat) ?? 0) + Math.abs(t.amount));
-      trendMap.set(m, catMap);
-    }
+  // Category trends are per-envelope, so they follow the splits.
+  for (const a of attributeSpend(txns, splits)) {
+    const m = monthOf(a.transaction.date);
+    if (m < cutoffMonth) continue;
+    if (a.amount >= 0) continue;
+    const cat = a.category ?? "uncategorized";
+    const catMap = trendMap.get(m) ?? new Map<string, number>();
+    catMap.set(cat, (catMap.get(cat) ?? 0) + Math.abs(a.amount));
+    trendMap.set(m, catMap);
   }
 
   const monthsSorted = [...new Set([...trendMap.keys(), ...flowMap.keys()])].sort();
