@@ -5,6 +5,9 @@
     "backend",
     "frontend"
   ],
+  "overrides": {
+    "expo-font": "~13.3.2"
+  },
   "scripts": {
     "dev:backend": "npm run dev --workspace=backend",
     "dev:frontend": "npm run start --workspace=frontend",
