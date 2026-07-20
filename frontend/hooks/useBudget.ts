@@ -9,6 +9,8 @@ export interface BudgetEnvelope {
   spent: number;
   remaining: number;
   overBudget: boolean;
+  /** No monthly target set yet — distinct from "budgeted $0 and overspent". */
+  unconfigured: boolean;
   categoryRules: string[];
   sortOrder: number;
 }
@@ -19,6 +21,8 @@ export interface BudgetSummary {
   totalIncome: number;
   remaining: number;
   saved: number;
+  configuredEnvelopes: number;
+  totalEnvelopes: number;
 }
 
 /** One notable transaction — a single spend consuming >= 15% of its envelope. */

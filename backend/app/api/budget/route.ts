@@ -72,13 +72,18 @@ export async function GET(req: NextRequest) {
     const spent = monthTxns
       .filter((t) => t.category === env.name && t.amount < 0)
       .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    // A 0 target means "no budget set yet", which is not the same as "you
+    // overspent". Without this distinction every freshly-created envelope
+    // reports as over budget the moment it has any spending at all.
+    const unconfigured = allocated <= 0;
     return {
       ...env,
       categoryRules: JSON.parse(env.categoryRules) as string[],
       allocated,
       spent,
-      remaining: allocated - spent,
-      overBudget: spent > allocated,
+      unconfigured,
+      remaining: unconfigured ? 0 : allocated - spent,
+      overBudget: !unconfigured && spent > allocated,
     };
   });
 
@@ -134,6 +139,10 @@ export async function GET(req: NextRequest) {
       totalIncome,
       remaining: totalAllocated - totalSpent,
       saved: totalIncome - totalSpent,
+      // Lets the client tell "no budget set up yet" apart from "budgeted $0",
+      // instead of rendering a large negative Remaining as if it were overspend.
+      configuredEnvelopes: summaries.filter((e) => !e.unconfigured).length,
+      totalEnvelopes: summaries.length,
     },
     bankConnections: connections,
   });

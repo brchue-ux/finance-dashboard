@@ -84,9 +84,14 @@ export default function BudgetScreen() {
         {/* Header */}
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <GradientText style={{ fontSize: 28, fontWeight: "800" }}>Budget</GradientText>
-          <Pressable onPress={() => router.push("/reports")} hitSlop={10}>
-            <Text style={{ fontSize: 20 }}>📊</Text>
-          </Pressable>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+            <Pressable onPress={() => router.push("/manage-envelopes")} hitSlop={10}>
+              <Text style={{ fontSize: 20 }}>🗂️</Text>
+            </Pressable>
+            <Pressable onPress={() => router.push("/reports")} hitSlop={10}>
+              <Text style={{ fontSize: 20 }}>📊</Text>
+            </Pressable>
+          </View>
         </View>
 
         {/* Month navigation */}
@@ -102,10 +107,18 @@ export default function BudgetScreen() {
         {summary && (
           <View style={{ flexDirection: "row", gap: 8, marginBottom: 20 }}>
             <StatCard label="Spent" value={fmt(summary.totalSpent)} />
+            {/* With nothing budgeted, "Remaining" would just be -Spent, which
+                reads as overspend against a limit that was never set. */}
             <StatCard
               label="Remaining"
-              value={fmt(summary.remaining)}
-              valueColor={summary.remaining < 0 ? COLORS.danger : COLORS.success}
+              value={summary.configuredEnvelopes === 0 ? "—" : fmt(summary.remaining)}
+              valueColor={
+                summary.configuredEnvelopes === 0
+                  ? COLORS.textMuted
+                  : summary.remaining < 0
+                    ? COLORS.danger
+                    : COLORS.success
+              }
             />
             <StatCard
               label="Saved"
@@ -117,8 +130,26 @@ export default function BudgetScreen() {
 
         {/* Envelope grid */}
         {data?.envelopes.map((env) => (
-          <EnvelopeCard key={env.id} envelope={env} />
+          <EnvelopeCard
+            key={env.id}
+            envelope={env}
+            onSetTarget={() => router.push("/manage-envelopes")}
+          />
         ))}
+
+        {/* No envelopes at all: budget math and categorization can't work yet. */}
+        {data && data.envelopes.length === 0 && (
+          <Pressable onPress={() => router.push("/manage-envelopes")}>
+            <View style={{ padding: 16, borderRadius: 16, borderWidth: 1, borderColor: COLORS.glassBorder, backgroundColor: COLORS.glassBg }}>
+              <Text style={{ color: COLORS.textPrimary, fontWeight: "600", fontSize: 15 }}>
+                Set up your envelopes
+              </Text>
+              <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 6 }}>
+                Transactions stay uncategorized until at least one envelope exists.
+              </Text>
+            </View>
+          </Pressable>
+        )}
 
         {/* Notable transactions — deterministic, above the AI cards so the
             free/always-current signal reads before the generated one. */}
