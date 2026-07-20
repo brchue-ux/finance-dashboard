@@ -75,6 +75,16 @@
 
 **FRONTEND STATUS (updated 2026-07-20 — see the authoritative FRONTEND-FEATURES block at the top):** DONE + committed: auth client slice, Alerts (+ Manage Alerts + unified-feed re-typing), Banks tab (+ per-account history), Reports, Holding Detail (chart + RSI/MACD + web-direct render), account-connection wizard (Plaid Hosted Link + SnapTrade — VERIFIED on-device, un-stubs Banks "+ Add account"). The former FOLLOW-UPS (RSI/MACD, web-direct chart render) are now BUILT (task #7, pending the user's visual check). Remaining open ideas (not started, not blocking): daily-candle range selector on Holding Detail; a same-institution Plaid dedup guard (needs storing institution_id).
 
+**AUTOMATED TESTS (added 2026-07-20) — `npm test` from the repo root, or `npx vitest run` in `backend/`.**
+Vitest 3.2.7, config at `backend/vitest.config.ts`. **71 tests, all passing.** Scope is deliberately pure logic only — anything touching the DB/Plaid/Anthropic is verified against the running server and `test.db` instead.
+- `lib/categorization.test.ts` (26) — every case is a real bug or real transaction description. Includes the four shipped bugs (`A&W`/`A & W`, `UBEREATS`, `STEAMGAMES`, `TACO BELL`) and regression guards that `BELL` must not match `BELLIES`/`BELLAS`.
+- `lib/budget/summarize.test.ts` (18) — the money math: unconfigured-vs-overBudget, the exactly-at-target boundary, allocation-overrides-target, notable threshold/cap/ordering.
+- `lib/import/{csv,normalize}.test.ts` (16) — RFC-4180 edge cases; sign convention, `negateAmounts`, unparseable-row handling.
+- `lib/alerts/severity.test.ts` (11) — both severity paths.
+- **`/api/budget`'s math now lives in `lib/budget/summarize.ts`** (pure, tested) rather than inline in the route. The extraction was verified behaviour-preserving by diffing the live endpoint response before/after — byte-identical.
+- The suite was verified to *fail*: reverting the matcher to its pre-fix version fails exactly 3 tests. A green suite that can't fail proves nothing.
+- Note: some pure helpers sit in modules that also import `db/index.ts`, which builds a libsql client at import time — hence `env.DATABASE_URL=file::memory:` in the vitest config. No test issues a query. That coupling is a design smell worth unpicking.
+
 **TEST ENVIRONMENT (added 2026-07-20) — use this for any demo/test data.**
 `backend/local.db` holds **REAL financial data** (1,700+ real RBC transactions). Do not create test data in it. A separate, isolated test database exists:
 - `backend/.env.test` → `DATABASE_URL=file:./test.db` (committed; contains no real secrets). Load it *after* `.env.local`, which supplies the shared auth/encryption secrets.
