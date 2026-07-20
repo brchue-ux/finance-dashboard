@@ -165,6 +165,26 @@ export default function SettingsScreen() {
           </Pressable>
         </GlassCard>
 
+        {/* System */}
+        <Text style={{ color: COLORS.textMuted, fontSize: 12, fontWeight: "600", letterSpacing: 1, marginBottom: 10 }}>
+          SYSTEM
+        </Text>
+        <GlassCard style={{ marginBottom: 20 }}>
+          <Pressable onPress={() => router.push("/system-status")} style={{ paddingVertical: 10 }}>
+            <Text style={{ color: COLORS.textPrimary, fontSize: 15 }}>System status</Text>
+            <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+              Sync health, background jobs, import history
+            </Text>
+          </Pressable>
+          <View style={{ height: 1, backgroundColor: COLORS.glassBorder }} />
+          <Pressable onPress={() => router.push("/developer")} style={{ paddingVertical: 10 }}>
+            <Text style={{ color: COLORS.textPrimary, fontSize: 15 }}>Developer</Text>
+            <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+              Raw job run logs
+            </Text>
+          </Pressable>
+        </GlassCard>
+
         {/* Account */}
         <Text style={{ color: COLORS.textMuted, fontSize: 12, fontWeight: "600", letterSpacing: 1, marginBottom: 10 }}>
           ACCOUNT
