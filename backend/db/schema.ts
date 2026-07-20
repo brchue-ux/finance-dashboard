@@ -168,6 +168,42 @@ export const transactions = sqliteTable("transactions", {
   createdAt: integer("created_at").notNull(),
 });
 
+// ── transaction_splits ────────────────────────────────────────────────────────
+// One purchase spanning several envelopes — a Walmart run that is part
+// groceries, part household. Without this, `transactions.category` forces the
+// whole amount into one envelope, which is wrong for exactly the merchants
+// where the amounts are largest.
+//
+// Model: a transaction either has NO split rows (its own `category` applies, as
+// before) or has splits that fully replace it. There is no partial state — the
+// splits must sum to the parent amount, so money can't appear or vanish from
+// budget totals. Existing rows need no migration.
+export const transactionSplits = sqliteTable(
+  "transaction_splits",
+  {
+    id: text("id").primaryKey(),
+    transactionId: text("transaction_id")
+      .notNull()
+      .references(() => transactions.id, { onDelete: "cascade" }),
+    // Denormalized from the parent so per-user queries don't need a join.
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id),
+    // Envelope NAME, matching transactions.category — envelopes are referenced
+    // by name throughout, and past rows must survive an envelope being renamed
+    // or deactivated.
+    category: text("category").notNull(),
+    // Same sign convention as the parent: negative = spend.
+    amount: real("amount").notNull(),
+    note: text("note"), // optional, e.g. "dog food"
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    index("idx_splits_transaction").on(t.transactionId), // load a transaction's splits
+    index("idx_splits_user_category").on(t.userId, t.category), // budget rollups
+  ]
+);
+
 // ── budget_envelopes ──────────────────────────────────────────────────────────
 export const budgetEnvelopes = sqliteTable("budget_envelopes", {
   id: text("id").primaryKey(),

@@ -9,6 +9,7 @@ import {
   budgetEnvelopes,
   envelopeAllocations,
   transactions,
+  transactionSplits,
   bankConnections,
 } from "@/db/schema";
 import { eq, and, gte, lte } from "drizzle-orm";
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
   const endDate = new Date(year, month, 0).toISOString().split("T")[0]; // last day of month
 
-  const [envelopes, allocations, monthTxns, connections] = await Promise.all([
+  const [envelopes, allocations, monthTxns, connections, splits] = await Promise.all([
     db
       .select()
       .from(budgetEnvelopes)
@@ -64,11 +65,21 @@ export async function GET(req: NextRequest) {
       })
       .from(bankConnections)
       .where(eq(bankConnections.userId, userId)),
+    // All of the user's splits; attributeSpend only applies those whose parent
+    // transaction is in this month's set, so no date filter is needed here.
+    db
+      .select({
+        transactionId: transactionSplits.transactionId,
+        category: transactionSplits.category,
+        amount: transactionSplits.amount,
+      })
+      .from(transactionSplits)
+      .where(eq(transactionSplits.userId, userId)),
   ]);
 
-  const summaries = summarizeEnvelopes(envelopes, allocations, monthTxns);
+  const summaries = summarizeEnvelopes(envelopes, allocations, monthTxns, splits);
   const totals = summarizeTotals(summaries, monthTxns);
-  const notableByCategory = computeNotableTransactions(summaries, monthTxns);
+  const notableByCategory = computeNotableTransactions(summaries, monthTxns, splits);
 
   return NextResponse.json({
     year,

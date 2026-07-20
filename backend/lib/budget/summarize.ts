@@ -31,6 +31,43 @@ export interface TransactionRow {
   category: string | null;
 }
 
+export interface SplitRow {
+  transactionId: string;
+  category: string;
+  amount: number;
+}
+
+/**
+ * Resolves each transaction into the (category, amount) pairs that actually
+ * count against envelopes.
+ *
+ * A split transaction is replaced entirely by its splits — never counted both
+ * ways, which would double-count the spend. An unsplit transaction keeps its
+ * own category, so nothing existing changes behaviour.
+ */
+export function attributeSpend(
+  monthTxns: TransactionRow[],
+  splits: SplitRow[]
+): { transaction: TransactionRow; category: string | null; amount: number }[] {
+  const byTransaction = new Map<string, SplitRow[]>();
+  for (const s of splits) {
+    const list = byTransaction.get(s.transactionId);
+    if (list) list.push(s);
+    else byTransaction.set(s.transactionId, [s]);
+  }
+
+  const out: { transaction: TransactionRow; category: string | null; amount: number }[] = [];
+  for (const t of monthTxns) {
+    const rows = byTransaction.get(t.id);
+    if (rows && rows.length > 0) {
+      for (const s of rows) out.push({ transaction: t, category: s.category, amount: s.amount });
+    } else {
+      out.push({ transaction: t, category: t.category, amount: t.amount });
+    }
+  }
+  return out;
+}
+
 export interface EnvelopeSummary {
   id: string;
   name: string;
@@ -52,17 +89,19 @@ export const NOTABLE_CAP_PER_CATEGORY = 3;
 export function summarizeEnvelopes(
   envelopes: EnvelopeRow[],
   allocations: AllocationRow[],
-  monthTxns: TransactionRow[]
+  monthTxns: TransactionRow[],
+  splits: SplitRow[] = []
 ): EnvelopeSummary[] {
   // A per-month allocation overrides the envelope's standing target, which is
   // how reallocation works without rewriting the envelope itself.
   const allocationMap = new Map(allocations.map((a) => [a.envelopeId, a.allocated]));
+  const attributed = attributeSpend(monthTxns, splits);
 
   return envelopes.map((env) => {
     const allocated = allocationMap.get(env.id) ?? env.monthlyTarget;
-    const spent = monthTxns
-      .filter((t) => t.category === env.name && t.amount < 0)
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const spent = attributed
+      .filter((a) => a.category === env.name && a.amount < 0)
+      .reduce((sum, a) => sum + Math.abs(a.amount), 0);
 
     // A 0 target means "not set up yet". Reporting that as over budget makes
     // every fresh envelope look breached the moment it has any spending.
@@ -102,30 +141,36 @@ export interface NotableCategory {
  */
 export function computeNotableTransactions(
   summaries: EnvelopeSummary[],
-  monthTxns: TransactionRow[]
+  monthTxns: TransactionRow[],
+  splits: SplitRow[] = []
 ): NotableCategory[] {
+  // Measured per split, not per transaction: a $200 shop split 50/50 across two
+  // envelopes is two ordinary charges, not one outsized one. Using the parent
+  // total would flag it in both.
+  const attributed = attributeSpend(monthTxns, splits);
+
   return summaries
     .filter((env) => env.allocated > 0)
     .map((env) => ({
       category: env.name,
       allocated: env.allocated,
-      transactions: monthTxns
+      transactions: attributed
         .filter(
-          (t) =>
-            t.category === env.name &&
-            t.amount < 0 &&
-            Math.abs(t.amount) / env.allocated >= NOTABLE_SHARE
+          (a) =>
+            a.category === env.name &&
+            a.amount < 0 &&
+            Math.abs(a.amount) / env.allocated >= NOTABLE_SHARE
         )
         .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
         .slice(0, NOTABLE_CAP_PER_CATEGORY)
-        .map((t) => ({
-          id: t.id,
-          accountId: t.accountId,
-          date: t.date,
-          description: t.description,
-          merchantName: t.merchantName,
-          amount: t.amount,
-          shareOfAllocation: Math.abs(t.amount) / env.allocated,
+        .map((a) => ({
+          id: a.transaction.id,
+          accountId: a.transaction.accountId,
+          date: a.transaction.date,
+          description: a.transaction.description,
+          merchantName: a.transaction.merchantName,
+          amount: a.amount,
+          shareOfAllocation: Math.abs(a.amount) / env.allocated,
         })),
     }))
     .filter((c) => c.transactions.length > 0);

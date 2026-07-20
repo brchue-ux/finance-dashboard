@@ -3,6 +3,7 @@ import {
   summarizeEnvelopes,
   summarizeTotals,
   computeNotableTransactions,
+  attributeSpend,
   NOTABLE_SHARE,
   type EnvelopeRow,
   type TransactionRow,
@@ -174,5 +175,118 @@ describe("summarizeTotals", () => {
     const t = summarizeTotals(summaries, []);
     expect(t.configuredEnvelopes).toBe(1);
     expect(t.totalEnvelopes).toBe(3);
+  });
+});
+
+describe("attributeSpend — splits replace the parent transaction", () => {
+  it("uses the transaction's own category when it has no splits", () => {
+    const t = txn("Groceries", -100);
+    expect(attributeSpend([t], [])).toEqual([
+      { transaction: t, category: "Groceries", amount: -100 },
+    ]);
+  });
+
+  it("replaces a split transaction with its parts, never both", () => {
+    // Counting the parent as well would double the spend.
+    const t = txn("Groceries", -200);
+    const out = attributeSpend([t], [
+      { transactionId: t.id, category: "Groceries", amount: -150 },
+      { transactionId: t.id, category: "Shopping", amount: -50 },
+    ]);
+    expect(out).toHaveLength(2);
+    expect(out.reduce((s, a) => s + a.amount, 0)).toBe(-200);
+  });
+
+  it("ignores splits belonging to other transactions", () => {
+    const t = txn("Groceries", -100);
+    const out = attributeSpend([t], [
+      { transactionId: "some-other-id", category: "Shopping", amount: -50 },
+    ]);
+    expect(out).toEqual([{ transaction: t, category: "Groceries", amount: -100 }]);
+  });
+});
+
+describe("summarizeEnvelopes — with splits", () => {
+  it("attributes each part to its own envelope", () => {
+    const t = txn("Groceries", -200);
+    const s = summarizeEnvelopes(
+      [env("Groceries", 500), env("Shopping", 300)],
+      [],
+      [t],
+      [
+        { transactionId: t.id, category: "Groceries", amount: -150 },
+        { transactionId: t.id, category: "Shopping", amount: -50 },
+      ]
+    );
+    expect(s.find((e) => e.name === "Groceries")!.spent).toBe(150);
+    expect(s.find((e) => e.name === "Shopping")!.spent).toBe(50);
+  });
+
+  it("does not double-count the parent's original category", () => {
+    // The whole point: a Walmart run categorized Groceries but split across two
+    // envelopes must contribute 150 to Groceries, not 350.
+    const t = txn("Groceries", -200);
+    const [g] = summarizeEnvelopes(
+      [env("Groceries", 500)],
+      [],
+      [t],
+      [
+        { transactionId: t.id, category: "Groceries", amount: -150 },
+        { transactionId: t.id, category: "Shopping", amount: -50 },
+      ]
+    );
+    expect(g.spent).toBe(150);
+  });
+
+  it("leaves totals unchanged when a split covers the same single envelope", () => {
+    const t = txn("Groceries", -200);
+    const [g] = summarizeEnvelopes(
+      [env("Groceries", 500)],
+      [],
+      [t],
+      [
+        { transactionId: t.id, category: "Groceries", amount: -120 },
+        { transactionId: t.id, category: "Groceries", amount: -80 },
+      ]
+    );
+    expect(g.spent).toBe(200);
+  });
+});
+
+describe("computeNotableTransactions — with splits", () => {
+  it("measures notability per split, not per parent amount", () => {
+    // $200 against a $500 envelope would be notable at 40%, but split 50/50 it
+    // is two ordinary $100 charges at 20% each — and must not be flagged twice.
+    const t = txn("Groceries", -200);
+    const splits = [
+      { transactionId: t.id, category: "Groceries", amount: -100 },
+      { transactionId: t.id, category: "Shopping", amount: -100 },
+    ];
+    const summaries = summarizeEnvelopes(
+      [env("Groceries", 5000), env("Shopping", 5000)],
+      [],
+      [t],
+      splits
+    );
+    // Both parts are 2% of their envelopes — below the 15% threshold.
+    expect(computeNotableTransactions(summaries, [t], splits)).toHaveLength(0);
+  });
+
+  it("flags a split part that is outsized for its own envelope", () => {
+    const t = txn("Groceries", -200);
+    const splits = [
+      { transactionId: t.id, category: "Groceries", amount: -150 },
+      { transactionId: t.id, category: "Shopping", amount: -50 },
+    ];
+    const summaries = summarizeEnvelopes(
+      [env("Groceries", 5000), env("Shopping", 100)],
+      [],
+      [t],
+      splits
+    );
+    const notable = computeNotableTransactions(summaries, [t], splits);
+    // Only Shopping: 50/100 = 50%. Groceries is 150/5000 = 3%.
+    expect(notable.map((c) => c.category)).toEqual(["Shopping"]);
+    expect(notable[0].transactions[0].amount).toBe(-50);
   });
 });
