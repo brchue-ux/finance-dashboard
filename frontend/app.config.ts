@@ -16,14 +16,14 @@ const config: ExpoConfig = {
   assetBundlePatterns: ["**/*"],
   ios: {
     supportsTablet: true,
-    bundleIdentifier: "com.yourname.financedashboard",
+    bundleIdentifier: "com.brchue.financedashboard",
   },
   android: {
     adaptiveIcon: {
       foregroundImage: "./assets/adaptive-icon.png",
       backgroundColor: "#13111C",
     },
-    package: "com.yourname.financedashboard",
+    package: "com.brchue.financedashboard",
   },
   web: {
     bundler: "metro",
