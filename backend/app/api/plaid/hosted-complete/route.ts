@@ -20,6 +20,25 @@ const bodySchema = z.object({
   institution_name: z.string().min(1),
 });
 
+/**
+ * Hosted Link records the session's on_success (which holds the public_token)
+ * asynchronously — it can lag a second or two behind the completion redirect
+ * the client returns on, so a single immediate read often sees on_success: null.
+ * Poll briefly and return as soon as it lands, rather than reporting the race
+ * to the user as "not completed".
+ */
+async function pollForPublicToken(link_token: string): Promise<string | undefined> {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const tokenRes = await plaidClient.linkTokenGet({ link_token });
+    const publicToken = tokenRes.data.link_sessions
+      ?.flatMap((s) => (s.on_success ? [s.on_success.public_token] : []))
+      .at(-1);
+    if (publicToken) return publicToken;
+    if (attempt < 7) await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  return undefined;
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -30,11 +49,7 @@ export async function POST(req: NextRequest) {
   }
   const { link_token, institution_name } = parsed.data;
 
-  const tokenRes = await plaidClient.linkTokenGet({ link_token });
-  const publicToken = tokenRes.data.link_sessions
-    ?.flatMap((s) => (s.on_success ? [s.on_success.public_token] : []))
-    .at(-1);
-
+  const publicToken = await pollForPublicToken(link_token);
   if (!publicToken) {
     return NextResponse.json({ error: "Link session not completed" }, { status: 409 });
   }
