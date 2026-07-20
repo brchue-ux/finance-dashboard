@@ -12,6 +12,11 @@ import {
   bankConnections,
 } from "@/db/schema";
 import { eq, and, gte, lte } from "drizzle-orm";
+import {
+  summarizeEnvelopes,
+  summarizeTotals,
+  computeNotableTransactions,
+} from "@/lib/budget/summarize";
 
 export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -61,71 +66,9 @@ export async function GET(req: NextRequest) {
       .where(eq(bankConnections.userId, userId)),
   ]);
 
-  // Build envelope summaries
-  const allocationMap = new Map(
-    allocations.map((a) => [a.envelopeId, a.allocated])
-  );
-
-  const summaries = envelopes.map((env) => {
-    const allocated =
-      allocationMap.get(env.id) ?? env.monthlyTarget;
-    const spent = monthTxns
-      .filter((t) => t.category === env.name && t.amount < 0)
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-    // A 0 target means "no budget set yet", which is not the same as "you
-    // overspent". Without this distinction every freshly-created envelope
-    // reports as over budget the moment it has any spending at all.
-    const unconfigured = allocated <= 0;
-    return {
-      ...env,
-      categoryRules: JSON.parse(env.categoryRules) as string[],
-      allocated,
-      spent,
-      unconfigured,
-      remaining: unconfigured ? 0 : allocated - spent,
-      overBudget: !unconfigured && spent > allocated,
-    };
-  });
-
-  const totalSpent = summaries.reduce((s, e) => s + e.spent, 0);
-  const totalAllocated = summaries.reduce((s, e) => s + e.allocated, 0);
-  const totalIncome = monthTxns
-    .filter((t) => t.amount > 0)
-    .reduce((s, t) => s + t.amount, 0);
-
-  // Notable transactions (spec §9 Budget item 5): deterministic, non-LLM.
-  // Signal: one transaction consuming ≥ 15% of its own envelope's allocation —
-  // percentage-of-own-envelope scales naturally by bucket size. One card per
-  // category, swipeable, capped at 3 transactions each. (The other signal —
-  // category approaching its cap — is already in each summary's
-  // spent/allocated/overBudget.)
-  const NOTABLE_SHARE = 0.15; // starting constant; tune after real usage
-  const NOTABLE_CAP_PER_CATEGORY = 3;
-  const notableByCategory = summaries
-    .filter((env) => env.allocated > 0)
-    .map((env) => ({
-      category: env.name,
-      allocated: env.allocated,
-      transactions: monthTxns
-        .filter(
-          (t) =>
-            t.category === env.name &&
-            t.amount < 0 &&
-            Math.abs(t.amount) / env.allocated >= NOTABLE_SHARE
-        )
-        .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
-        .slice(0, NOTABLE_CAP_PER_CATEGORY)
-        .map((t) => ({
-          id: t.id,
-          accountId: t.accountId,
-          date: t.date,
-          description: t.description,
-          merchantName: t.merchantName,
-          amount: t.amount,
-          shareOfAllocation: Math.abs(t.amount) / env.allocated,
-        })),
-    }))
-    .filter((c) => c.transactions.length > 0);
+  const summaries = summarizeEnvelopes(envelopes, allocations, monthTxns);
+  const totals = summarizeTotals(summaries, monthTxns);
+  const notableByCategory = computeNotableTransactions(summaries, monthTxns);
 
   return NextResponse.json({
     year,
@@ -133,17 +76,7 @@ export async function GET(req: NextRequest) {
     envelopes: summaries,
     transactions: monthTxns,
     notableTransactions: notableByCategory,
-    summary: {
-      totalSpent,
-      totalAllocated,
-      totalIncome,
-      remaining: totalAllocated - totalSpent,
-      saved: totalIncome - totalSpent,
-      // Lets the client tell "no budget set up yet" apart from "budgeted $0",
-      // instead of rendering a large negative Remaining as if it were overspend.
-      configuredEnvelopes: summaries.filter((e) => !e.unconfigured).length,
-      totalEnvelopes: summaries.length,
-    },
+    summary: totals,
     bankConnections: connections,
   });
 }
