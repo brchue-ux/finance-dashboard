@@ -8,7 +8,7 @@
  * present but explains it's not wired yet. It goes live with the wizard task.
  */
 import { useState } from "react";
-import { ScrollView, View, Text, Pressable, ActivityIndicator, Alert } from "react-native";
+import { ScrollView, View, Text, Pressable, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { GradientText } from "@/components/ui/GradientText";
@@ -67,14 +67,9 @@ export default function BanksScreen() {
               />
             ))}
 
-            {/* "+ Add account" — launches the (paused) onboarding wizard */}
+            {/* "+ Add account" — launches the account-connection wizard */}
             <Pressable
-              onPress={() =>
-                Alert.alert(
-                  "Coming soon",
-                  "Connecting a new account uses a secure sign-in flow that isn’t wired up yet. It’ll land with the account-connection wizard."
-                )
-              }
+              onPress={() => router.push("/connect-account" as any)}
               style={{
                 borderWidth: 1,
                 borderColor: COLORS.glassBorder,
