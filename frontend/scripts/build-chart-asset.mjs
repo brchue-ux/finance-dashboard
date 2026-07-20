@@ -1,123 +1,58 @@
 /**
  * Generates lib/chart/holding-chart-html.ts — a fully self-contained HTML page
- * (Lightweight Charts v5 inlined + our chart glue) shipped as a static asset
- * for the Holding Detail chart (spec §9: bundled, not network-fetched). Loaded
- * into a react-native-webview on native and an <iframe srcDoc> on web.
+ * (Lightweight Charts v5 inlined + our shared chart controller) shipped as a
+ * static asset for the Holding Detail chart (spec §9: bundled, not
+ * network-fetched). Loaded into a react-native-webview on native.
  *
- * Run when the lightweight-charts version or the glue changes:
+ * The chart logic lives in lib/chart/holding-chart-controller.js and is shared
+ * verbatim with the web-direct path (ChartView.web.tsx). Here we inline that
+ * controller and wrap it in a tiny postMessage bridge; on web the same module is
+ * imported and driven directly, so there is exactly one chart implementation.
+ *
+ * Run when the lightweight-charts version or the controller changes:
  *   node scripts/build-chart-asset.mjs
  *
- * The glue talks to the host via a tiny postMessage protocol:
- *   host → chart:  { type: "init",  bars, overlay, theme }   (also re-render on updates)
- *   host → chart:  { type: "indicators", ma20, ma50 }        (toggle MA overlays)
- *   chart → host:  { type: "ready" }                          (send state only after this)
- * The host injects messages via window.__chart(payload) (native injectedJavaScript)
- * or window.postMessage (web iframe); the chart listens for both.
+ * Bridge protocol (host → chart):
+ *   { type: "init",  bars, overlay, theme }   → controller.setData(...)
+ *   { type: "indicators", ma20, ma50, rsi, macd } → controller.setIndicators(...)
+ * chart → host: { type: "ready" } (sent once; the host only pushes state after it).
+ * The host injects via window.__chart(payload) (native) or window.postMessage (web iframe).
  */
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
+
 const lib = readFileSync(
   resolve(here, "../../node_modules/lightweight-charts/dist/lightweight-charts.standalone.production.js"),
   "utf8"
 );
 
-// Chart controller. Runs inside the WebView/iframe; `LightweightCharts` is the
-// global from the inlined standalone build above.
-const GLUE = `
-(function () {
-  var LC = window.LightweightCharts;
-  var el = document.getElementById("chart");
-  var chart = null, candles = null, ma20Series = null, ma50Series = null;
-  var lastBars = [], lastOverlay = null, lastTheme = null;
+// Inline the shared controller as a plain <script> body: drop the ES `export`
+// so createHoldingChartController becomes a global the bridge can call.
+const controller = readFileSync(resolve(here, "../lib/chart/holding-chart-controller.js"), "utf8")
+  .replace(/^export\s+function/m, "function");
 
+const BRIDGE = `
+(function () {
+  var ctl = createHoldingChartController(window.LightweightCharts, document.getElementById("chart"));
   function post(msg) {
     var s = JSON.stringify(msg);
     if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(s);
     else if (window.parent && window.parent !== window) window.parent.postMessage(s, "*");
   }
-
-  function sma(bars, period) {
-    var out = [], sum = 0;
-    for (var i = 0; i < bars.length; i++) {
-      sum += bars[i].close;
-      if (i >= period) sum -= bars[i - period].close;
-      if (i >= period - 1) out.push({ time: bars[i].time, value: sum / period });
-    }
-    return out;
-  }
-
-  function build(bars, overlay, theme) {
-    if (chart) { chart.remove(); chart = null; }
-    ma20Series = ma50Series = null;
-    var text = (theme && theme.text) || "#F8FAFC";
-    chart = LC.createChart(el, {
-      layout: { background: { color: "transparent" }, textColor: text, attributionLogo: false },
-      grid: { vertLines: { visible: false }, horzLines: { color: "rgba(255,255,255,0.06)" } },
-      rightPriceScale: { borderColor: "rgba(255,255,255,0.1)" },
-      timeScale: { borderColor: "rgba(255,255,255,0.1)", fixLeftEdge: true, fixRightEdge: true },
-      crosshair: { mode: LC.CrosshairMode.Normal },
-      autoSize: true,
-    });
-    candles = chart.addSeries(LC.CandlestickSeries, {
-      upColor: "#22C55E", downColor: "#EF4444",
-      wickUpColor: "#22C55E", wickDownColor: "#EF4444",
-      borderVisible: false,
-    });
-    candles.setData(bars);
-
-    if (overlay && typeof overlay.costBasis === "number") {
-      candles.createPriceLine({
-        price: overlay.costBasis,
-        color: (theme && theme.accent) || "#7C3AED",
-        lineWidth: 1, lineStyle: LC.LineStyle.Dashed,
-        axisLabelVisible: true, title: "Cost",
-      });
-    }
-    if (overlay && overlay.purchaseTime && LC.createSeriesMarkers) {
-      LC.createSeriesMarkers(candles, [{
-        time: overlay.purchaseTime, position: "belowBar",
-        color: (theme && theme.accent) || "#7C3AED", shape: "arrowUp",
-        text: overlay.purchaseLabel || "Buy",
-      }]);
-    }
-    chart.timeScale().fitContent();
-  }
-
-  function setIndicators(ma20, ma50) {
-    if (!chart) return;
-    if (ma20Series) { chart.removeSeries(ma20Series); ma20Series = null; }
-    if (ma50Series) { chart.removeSeries(ma50Series); ma50Series = null; }
-    if (ma20 && lastBars.length) {
-      ma20Series = chart.addSeries(LC.LineSeries, { color: "#60A5FA", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
-      ma20Series.setData(sma(lastBars, 20));
-    }
-    if (ma50 && lastBars.length) {
-      ma50Series = chart.addSeries(LC.LineSeries, { color: "#F59E0B", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
-      ma50Series.setData(sma(lastBars, 50));
-    }
-  }
-
   function handle(payload) {
     try {
       var msg = typeof payload === "string" ? JSON.parse(payload) : payload;
       if (!msg || !msg.type) return;
-      if (msg.type === "init") {
-        lastBars = msg.bars || []; lastOverlay = msg.overlay || null; lastTheme = msg.theme || null;
-        if (lastBars.length) build(lastBars, lastOverlay, lastTheme);
-      } else if (msg.type === "indicators") {
-        setIndicators(!!msg.ma20, !!msg.ma50);
-      }
-    } catch (e) { post({ type: "error", message: String(e && e.message || e) }); }
+      if (msg.type === "init") ctl.setData(msg.bars || [], msg.overlay || null, msg.theme || null);
+      else if (msg.type === "indicators") ctl.setIndicators(msg);
+    } catch (e) { post({ type: "error", message: String((e && e.message) || e) }); }
   }
-
-  // Native injects via window.__chart(...); web iframe posts a message event.
   window.__chart = handle;
   window.addEventListener("message", function (e) { handle(e.data); });
   document.addEventListener("message", function (e) { handle(e.data); });
-
   post({ type: "ready" });
 })();
 `;
@@ -135,7 +70,8 @@ const html = `<!doctype html>
 <body>
 <div id="chart"></div>
 <script>${lib}</script>
-<script>${GLUE}</script>
+<script>${controller}</script>
+<script>${BRIDGE}</script>
 </body>
 </html>`;
 

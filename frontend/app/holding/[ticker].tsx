@@ -37,6 +37,11 @@ export default function HoldingDetailScreen() {
   const [chatOpen, setChatOpen] = useState(false);
   const [ma20, setMa20] = useState(false);
   const [ma50, setMa50] = useState(false);
+  const [rsi, setRsi] = useState(false);
+  const [macd, setMacd] = useState(false);
+
+  // RSI and MACD each add a stacked sub-pane, so grow the chart to keep price readable.
+  const chartHeight = 260 + (rsi ? 90 : 0) + (macd ? 90 : 0);
 
   const holding = portfolio?.holdings.find((h) => h.ticker.toUpperCase() === symbol);
 
@@ -98,14 +103,16 @@ export default function HoldingDetailScreen() {
             <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>Price history unavailable</Text>
           </View>
         ) : (
-          <ChartView bars={bars} overlay={overlay} ma20={ma20} ma50={ma50} />
+          <ChartView bars={bars} overlay={overlay} ma20={ma20} ma50={ma50} rsi={rsi} macd={macd} height={chartHeight} />
         )}
 
-        {/* Indicator chips (MA20/MA50 functional; RSI/MACD via deepentropy is a follow-up) */}
+        {/* Indicator toggles: MA20/MA50 overlay the price; RSI/MACD add sub-panes. */}
         {bars.length > 0 && (
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
             <Chip label="MA20" active={ma20} onPress={() => setMa20((v) => !v)} />
             <Chip label="MA50" active={ma50} onPress={() => setMa50((v) => !v)} />
+            <Chip label="RSI" active={rsi} onPress={() => setRsi((v) => !v)} />
+            <Chip label="MACD" active={macd} onPress={() => setMacd((v) => !v)} />
           </View>
         )}
 

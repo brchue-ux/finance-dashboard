@@ -11,32 +11,13 @@ import { View } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { COLORS } from "@/constants/theme";
 import { HOLDING_CHART_HTML } from "@/lib/chart/holding-chart-html";
+import type { ChartViewProps } from "./chart-types";
 
-export interface ChartBar {
-  time: string; // YYYY-MM-DD
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-}
-
-export interface ChartOverlay {
-  costBasis?: number;
-  purchaseTime?: string; // YYYY-MM-DD
-  purchaseLabel?: string; // "X shares @ $Y.YY"
-}
-
-export interface ChartViewProps {
-  bars: ChartBar[];
-  overlay?: ChartOverlay;
-  ma20?: boolean;
-  ma50?: boolean;
-  height?: number;
-}
+export type { ChartBar, ChartOverlay, ChartViewProps } from "./chart-types";
 
 const THEME = { text: COLORS.textPrimary, accent: COLORS.brandPurple };
 
-export function ChartView({ bars, overlay, ma20, ma50, height = 260 }: ChartViewProps) {
+export function ChartView({ bars, overlay, ma20, ma50, rsi, macd, height = 260 }: ChartViewProps) {
   const ref = useRef<WebView>(null);
   const [ready, setReady] = useState(false);
 
@@ -50,8 +31,8 @@ export function ChartView({ bars, overlay, ma20, ma50, height = 260 }: ChartView
   }, [ready, bars, overlay, send]);
 
   useEffect(() => {
-    if (ready) send({ type: "indicators", ma20: !!ma20, ma50: !!ma50 });
-  }, [ready, ma20, ma50, send]);
+    if (ready) send({ type: "indicators", ma20: !!ma20, ma50: !!ma50, rsi: !!rsi, macd: !!macd });
+  }, [ready, ma20, ma50, rsi, macd, send]);
 
   const onMessage = useCallback((e: WebViewMessageEvent) => {
     try {
