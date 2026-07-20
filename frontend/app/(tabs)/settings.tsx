@@ -132,6 +132,26 @@ export default function SettingsScreen() {
           </View>
         </GlassCard>
 
+        {/* Alerts */}
+        <Text style={{ color: COLORS.textMuted, fontSize: 12, fontWeight: "600", letterSpacing: 1, marginBottom: 10 }}>
+          ALERTS
+        </Text>
+        <GlassCard style={{ marginBottom: 20 }}>
+          <Pressable onPress={() => router.push("/manage-alerts")} style={{ paddingVertical: 10 }}>
+            <Text style={{ color: COLORS.textPrimary, fontSize: 15 }}>Manage price alerts</Text>
+            <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+              Native alerts — no third-party plan needed
+            </Text>
+          </Pressable>
+          <View style={{ height: 1, backgroundColor: COLORS.glassBorder }} />
+          <Pressable onPress={() => router.push("/tradingview-alerts")} style={{ paddingVertical: 10 }}>
+            <Text style={{ color: COLORS.textPrimary, fontSize: 15 }}>TradingView webhooks</Text>
+            <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+              Optional · requires a paid TradingView plan
+            </Text>
+          </Pressable>
+        </GlassCard>
+
         {/* Data */}
         <Text style={{ color: COLORS.textMuted, fontSize: 12, fontWeight: "600", letterSpacing: 1, marginBottom: 10 }}>
           DATA
