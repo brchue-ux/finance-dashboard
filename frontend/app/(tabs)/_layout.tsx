@@ -2,6 +2,8 @@ import { Tabs, Redirect } from "expo-router";
 import { View, Text, ActivityIndicator } from "react-native";
 import { COLORS } from "@/constants/theme";
 import { useAlerts } from "@/hooks/useAlerts";
+import { useBudget } from "@/hooks/useBudget";
+import { usePortfolio } from "@/hooks/usePortfolio";
 import { useSession } from "@/lib/auth";
 
 function AlertsBadge() {
@@ -26,6 +28,41 @@ function AlertsBadge() {
         {data.unreadCount > 99 ? "99+" : data.unreadCount}
       </Text>
     </View>
+  );
+}
+
+/**
+ * Dot on the Settings tab when a connection needs re-auth. Broken connections
+ * are rare, so this deliberately isn't a banner on every screen — it's the same
+ * unobtrusive tab-bar signal as AlertsBadge, and Settings → Connected Accounts
+ * is the destination once it's noticed.
+ */
+function ConnectionAlertBadge() {
+  const now = new Date();
+  const { data: budget } = useBudget(now.getFullYear(), now.getMonth() + 1);
+  const { data: portfolio } = usePortfolio();
+
+  const bankNeedsAttention = (budget?.bankConnections ?? []).some(
+    (c) => c.status === "relink_required" || c.status === "reconnect_required"
+  );
+  const brokerageNeedsAttention =
+    portfolio?.connection?.status === "reconnect_required" ||
+    portfolio?.connection?.status === "relink_required";
+
+  if (!bankNeedsAttention && !brokerageNeedsAttention) return null;
+
+  return (
+    <View
+      style={{
+        position: "absolute",
+        top: -2,
+        right: -6,
+        backgroundColor: COLORS.warning,
+        borderRadius: 5,
+        width: 10,
+        height: 10,
+      }}
+    />
   );
 }
 
@@ -104,7 +141,12 @@ export default function TabsLayout() {
         name="settings"
         options={{
           title: "Settings",
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>⚙️</Text>,
+          tabBarIcon: ({ color }) => (
+            <View>
+              <Text style={{ color, fontSize: 18 }}>⚙️</Text>
+              <ConnectionAlertBadge />
+            </View>
+          ),
         }}
       />
     </Tabs>

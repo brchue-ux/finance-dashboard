@@ -3,7 +3,8 @@
  * Completes a Hosted Link session: the frontend returns from the browser
  * handoff with only its link_token — the public_token lives server-side in the
  * session results (spec §5.1). Retrieves it, then does the same exchange +
- * account population as /api/plaid/exchange.
+ * account population the raw-Link exchange path used to do (that route was
+ * removed — Hosted Link is the locked mechanism).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
