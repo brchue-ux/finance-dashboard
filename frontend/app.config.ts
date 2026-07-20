@@ -3,6 +3,7 @@ import { ExpoConfig } from "expo/config";
 const config: ExpoConfig = {
   name: "Finance Dashboard",
   slug: "finance-dashboard",
+  owner: "brchue",
   version: "1.0.0",
   orientation: "portrait",
   icon: "./assets/icon.png",
@@ -33,6 +34,9 @@ const config: ExpoConfig = {
   scheme: "finance-dashboard",
   extra: {
     apiUrl: process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001",
+    eas: {
+      projectId: "99316aa0-a650-4013-bc02-75ccfdfe8b0a",
+    },
   },
 };
 
