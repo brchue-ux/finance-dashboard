@@ -21,19 +21,30 @@ const bodySchema = z.object({
 });
 
 /**
- * Hosted Link records the session's on_success (which holds the public_token)
- * asynchronously — it can lag a second or two behind the completion redirect
- * the client returns on, so a single immediate read often sees on_success: null.
- * Poll briefly and return as soon as it lands, rather than reporting the race
- * to the user as "not completed".
+ * Retrieves the Item-add result for a completed Hosted Link session. The
+ * public_token lives in link_sessions[].results.item_add_results[] — NOT in the
+ * deprecated on_success field, which Plaid no longer populates for Hosted Link
+ * (reading it there returned empty even on sessions that finished "connected").
+ *
+ * Results are recorded asynchronously and can lag a second or two behind the
+ * completion redirect the client returns on, so poll briefly and return as soon
+ * as the Item-add lands rather than reporting the race as "not completed".
  */
-async function pollForPublicToken(link_token: string): Promise<string | undefined> {
+async function pollForItemAddResult(
+  link_token: string
+): Promise<{ publicToken: string; institutionName?: string } | undefined> {
   for (let attempt = 0; attempt < 8; attempt++) {
     const tokenRes = await plaidClient.linkTokenGet({ link_token });
-    const publicToken = tokenRes.data.link_sessions
-      ?.flatMap((s) => (s.on_success ? [s.on_success.public_token] : []))
-      .at(-1);
-    if (publicToken) return publicToken;
+    const sessions = tokenRes.data.link_sessions ?? [];
+    const result = sessions
+      .flatMap((s) => s.results?.item_add_results ?? [])
+      .find((r) => r.public_token);
+    if (result) {
+      return {
+        publicToken: result.public_token,
+        institutionName: result.institution?.name ?? undefined,
+      };
+    }
     if (attempt < 7) await new Promise((resolve) => setTimeout(resolve, 1000));
   }
   return undefined;
@@ -49,26 +60,37 @@ export async function POST(req: NextRequest) {
   }
   const { link_token, institution_name } = parsed.data;
 
-  const publicToken = await pollForPublicToken(link_token);
-  if (!publicToken) {
+  const result = await pollForItemAddResult(link_token);
+  if (!result) {
     return NextResponse.json({ error: "Link session not completed" }, { status: 409 });
   }
 
-  const exchangeRes = await plaidClient.itemPublicTokenExchange({ public_token: publicToken });
+  // Prefer the institution name Plaid recorded for the session over the client's
+  // placeholder, so Banks shows e.g. "Tangerine - Personal" rather than "Bank".
+  const resolvedInstitutionName = result.institutionName ?? institution_name;
+
+  const exchangeRes = await plaidClient.itemPublicTokenExchange({
+    public_token: result.publicToken,
+  });
   const { access_token, item_id } = exchangeRes.data;
 
   const connectionId = uuidv4();
   await db.insert(bankConnections).values({
     id: connectionId,
     userId: session.user.id,
-    institutionName: institution_name,
+    institutionName: resolvedInstitutionName,
     plaidItemId: item_id,
     plaidAccessToken: encrypt(access_token),
     status: "active",
     createdAt: Math.floor(Date.now() / 1000),
   });
 
-  await syncAccountsForConnection(connectionId, session.user.id, access_token, institution_name);
+  await syncAccountsForConnection(
+    connectionId,
+    session.user.id,
+    access_token,
+    resolvedInstitutionName
+  );
 
   return NextResponse.json({ ok: true });
 }

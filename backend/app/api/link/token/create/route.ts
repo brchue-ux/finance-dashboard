@@ -28,8 +28,20 @@ export async function POST(req: NextRequest) {
   // completion via the hosted-complete endpoint after the popup closes.
   const body = (await req.json().catch(() => ({}))) as { platform?: "native" | "web" };
 
+  // Plaid caches its Returning-User / Layer state against the exact client_user_id
+  // string. In production we want a STABLE per-user id so returning-user and
+  // update-mode flows work. But in sandbox, reusing one stable id makes every
+  // retry look like a returning user, so Plaid hijacks the Hosted Link session
+  // with Layer — which finishes with no on_success and thus no public_token
+  // (the 409 we were hitting). A fresh id per session forces the standard
+  // institution-picker + login that actually records on_success.public_token.
+  const clientUserId =
+    (process.env.PLAID_ENV ?? "sandbox") === "sandbox"
+      ? `${session.user.id}-${crypto.randomUUID()}`
+      : session.user.id;
+
   const response = await plaidClient.linkTokenCreate({
-    user: { client_user_id: session.user.id },
+    user: { client_user_id: clientUserId },
     client_name: "Finance Dashboard",
     products: [Products.Transactions],
     country_codes: [CountryCode.Ca],
@@ -37,7 +49,14 @@ export async function POST(req: NextRequest) {
     ...(redirectUri ? { redirect_uri: redirectUri } : {}),
     hosted_link: {
       ...(body.platform === "native"
-        ? { completion_redirect_uri: "finance-dashboard://plaid-hosted-link-complete" }
+        ? {
+            completion_redirect_uri: "finance-dashboard://plaid-hosted-link-complete",
+            // NOTE: hosted_link.is_mobile_app cannot be used here — Plaid rejects
+            // linkTokenCreate with INVALID_FIELD unless a top-level redirect_uri is
+            // ALSO set, and ours stays unset in sandbox (an unregistered redirect_uri
+            // breaks every institution). Steering away from Layer must be done in the
+            // Plaid Dashboard (disable Returning User / Layer), not via this flag.
+          }
         : {}),
     },
   });
