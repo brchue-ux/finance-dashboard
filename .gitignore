@@ -13,6 +13,9 @@ dist/
 
 # Real financial data — never commit
 download-transactions*.csv
+# Device debug screenshots (may show account details)
+error screenshots/
+*-screenshot*.png
 # Local SQLite DBs hold real financial data — never track
 local.db
 *.db
