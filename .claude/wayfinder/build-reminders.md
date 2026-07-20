@@ -28,6 +28,31 @@ Items in this file were identified during post-completion analysis but deferred 
 - Confirm `TWELVE_DATA_API_KEY` is in Railway env vars before deploying.
 - At build time the free tier (800 calls/day) is assumed sufficient. If daily usage consistently exceeds it during development, upgrade to Grow ($29/month) before launch.
 
+### 4. Walmart receipt barcode → itemized digitization — BLOCKED on Walmart Canada, revisit
+**Phase:** Transaction splits / receipt ingestion
+**Status:** Deferred 2026-07-20. Not a design choice — the capability does not exist in Canada yet.
+**Context:** Walmart paper receipts carry a barcode intended to be scanned in the Walmart app to
+digitize an itemized list. **That feature is not shipped in Canada** (user-confirmed: the barcode
+scans but leads nowhere). US parity would make this the cheapest possible path to line items.
+
+Verified alongside it, so it isn't re-investigated from scratch:
+- Walmart Canada e-receipt emails carry **no line items at all** — the body is an order number
+  and a tracked link. Nothing to parse.
+- The e-receipt page exposes exactly one GraphQL field:
+  `GetReceiptImage` → `getReceiptImage(hash:ID!){content}`, persisted hash
+  `793f1e7db1ce08440ec7af85f6c222b714ef8f65592095a28308e2c56635974d`.
+  It returns an **image** of the receipt. No structured item data exists on this path, so any
+  extraction from it is necessarily a vision/OCR problem, not parsing.
+- `www.walmart.ca/orchestra/*graphql` is **PerimeterX-protected** (`appId PXnp9B16Cq`); an
+  unattended server-side call returns **HTTP 412** with a `/blocked` challenge. PX fingerprints
+  headless browsers, so Playwright relocates the fight rather than winning it. Automated
+  zero-touch fetching is also squarely against Walmart's ToS.
+
+**Revisit when:** Walmart Canada ships receipt-barcode scanning in its app. At that point
+re-evaluate whether it yields structured items (preferred) or just an image.
+**Do not, in the meantime,** build a PerimeterX-evading scraper — the realistic ceiling on the
+current stack is one user tap per receipt (real browser session), which does not rot.
+
 ---
 
 ## POST-LAUNCH — Must be reviewed after the app has real usage
