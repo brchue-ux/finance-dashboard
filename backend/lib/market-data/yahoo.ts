@@ -28,13 +28,20 @@ export class YahooFinanceProvider implements MarketDataProvider {
       interval: range === "1mo" || range === "3mo" ? "1d" : "1wk",
     });
 
-    return (result.quotes ?? []).map((q) => ({
-      time: new Date(q.date).toISOString().split("T")[0],
-      open: q.open ?? 0,
-      high: q.high ?? 0,
-      low: q.low ?? 0,
-      close: q.close ?? 0,
-      volume: q.volume ?? 0,
-    }));
+    // Drop incomplete bars. Yahoo appends a bar for the current, still-forming
+    // period whose OHLC are null; zero-filling it put a candle at 0 next to real
+    // ~$500 candles, so the chart auto-scaled 0..max and crushed all real data
+    // into a sliver at the top — a blank-looking chart. A candle needs all four
+    // prices, so any null means the bar isn't real yet and must be skipped.
+    return (result.quotes ?? [])
+      .filter((q) => q.open != null && q.high != null && q.low != null && q.close != null)
+      .map((q) => ({
+        time: new Date(q.date).toISOString().split("T")[0],
+        open: q.open as number,
+        high: q.high as number,
+        low: q.low as number,
+        close: q.close as number,
+        volume: q.volume ?? 0,
+      }));
   }
 }
