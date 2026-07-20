@@ -33,9 +33,6 @@ const config: ExpoConfig = {
   scheme: "finance-dashboard",
   extra: {
     apiUrl: process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001",
-    eas: {
-      projectId: "your-eas-project-id", // set after running: eas init
-    },
   },
 };
 
