@@ -75,6 +75,16 @@
 
 **FRONTEND STATUS (updated 2026-07-20 — see the authoritative FRONTEND-FEATURES block at the top):** DONE + committed: auth client slice, Alerts (+ Manage Alerts + unified-feed re-typing), Banks tab (+ per-account history), Reports, Holding Detail (chart + RSI/MACD + web-direct render), account-connection wizard (Plaid Hosted Link + SnapTrade — VERIFIED on-device, un-stubs Banks "+ Add account"). The former FOLLOW-UPS (RSI/MACD, web-direct chart render) are now BUILT (task #7, pending the user's visual check). Remaining open ideas (not started, not blocking): daily-candle range selector on Holding Detail; a same-institution Plaid dedup guard (needs storing institution_id).
 
+**TEST ENVIRONMENT (added 2026-07-20) — use this for any demo/test data.**
+`backend/local.db` holds **REAL financial data** (1,700+ real RBC transactions). Do not create test data in it. A separate, isolated test database exists:
+- `backend/.env.test` → `DATABASE_URL=file:./test.db` (committed; contains no real secrets). Load it *after* `.env.local`, which supplies the shared auth/encryption secrets.
+- Seed it: `node --env-file=.env.local --env-file=.env.test ../node_modules/.bin/tsx db/seed-test.ts`
+- Run the app against it: same double `--env-file` on `next dev`.
+- `db/seed-test.ts` **refuses to run unless `DATABASE_URL` matches /test/i**, so a forgotten `--env-file` can't write demo rows into `local.db` (guard verified). It is idempotent (clears its own user's rows first) and deterministic (seeded PRNG).
+- Every generated row carries a **`[TEST]`** marker in its description/name, so test data is obvious in any screen, log or export.
+- Contents: demo user `demo@test.local`, 7 envelopes **with real targets set** (unlike local.db, where targets are 0 = unconfigured), 2 accounts, ~206 transactions over 4 months, balance snapshots for the Reports trend, plus a guaranteed-notable transaction per month so those cards always render.
+- Categories are assigned by the **real** `categorize()` engine at insert time (mirroring the import/sync path) rather than hardcoded — so a rules regression shows up as uncategorized demo data instead of being masked.
+
 **How to resume / run the app:**
 - Dev server: from `backend/`, `npx next dev --port 3011` (port 3001 is taken by an unrelated container; 3011 is the convention here). Env auto-loads `backend/.env.local`.
 - `.env.local` is POPULATED + working for: Anthropic, Plaid sandbox, SnapTrade sandbox, Google OAuth, Microsoft OAuth, auth/seed. Only `ALPHA_VANTAGE_API_KEY` is still empty (OHLCV fallback only — Yahoo primary works). File is gitignored; secrets backed up in `~/.secrets/`.
