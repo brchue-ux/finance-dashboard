@@ -18,6 +18,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { MonthNav } from "@/components/budget/MonthNav";
 import { EnvelopeCard } from "@/components/budget/EnvelopeCard";
 import { LLMCards } from "@/components/budget/LLMCards";
+import { NotableTransactions } from "@/components/budget/NotableTransactions";
 import { TransactionFeed } from "@/components/budget/TransactionFeed";
 import { ConversationSheet } from "@/components/llm/ConversationSheet";
 import { COLORS } from "@/constants/theme";
@@ -118,6 +119,12 @@ export default function BudgetScreen() {
         {data?.envelopes.map((env) => (
           <EnvelopeCard key={env.id} envelope={env} />
         ))}
+
+        {/* Notable transactions — deterministic, above the AI cards so the
+            free/always-current signal reads before the generated one. */}
+        <View style={{ marginTop: 12 }}>
+          <NotableTransactions categories={data?.notableTransactions ?? []} />
+        </View>
 
         {/* LLM cards */}
         <View style={{ marginTop: 8, marginBottom: 20 }}>

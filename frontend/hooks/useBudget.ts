@@ -21,11 +21,30 @@ export interface BudgetSummary {
   saved: number;
 }
 
+/** One notable transaction — a single spend consuming >= 15% of its envelope. */
+export interface NotableTransaction {
+  id: string;
+  accountId: string;
+  date: string;
+  description: string;
+  merchantName: string | null;
+  amount: number;
+  shareOfAllocation: number;
+}
+
+/** Notable transactions grouped by envelope; backend caps at 3 per category. */
+export interface NotableCategory {
+  category: string;
+  allocated: number;
+  transactions: NotableTransaction[];
+}
+
 export interface BudgetResponse {
   year: number;
   month: number;
   envelopes: BudgetEnvelope[];
   transactions: Transaction[];
+  notableTransactions: NotableCategory[];
   summary: BudgetSummary;
   bankConnections: { institution: string; status: string; lastSyncedAt: number | null }[];
 }

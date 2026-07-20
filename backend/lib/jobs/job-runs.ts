@@ -17,7 +17,8 @@ export type JobType =
   | "import_google_sheets"
   | "import_excel"
   | "tradingview_webhook"
-  | "graph_subscription_renewal";
+  | "graph_subscription_renewal"
+  | "recategorize";
 
 export async function startJobRun(jobType: JobType, userId?: string): Promise<string> {
   const id = uuidv4();

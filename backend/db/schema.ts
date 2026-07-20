@@ -379,7 +379,7 @@ export const jobRuns = sqliteTable(
     userId: text("user_id").references(() => user.id), // NULL for system-wide jobs (alert_poll)
     jobType: text("job_type").notNull(), // "plaid_sync" | "snaptrade_sync" | "alert_poll" | "nightly_batch"
     // | "import_csv" | "import_google_sheets" | "import_excel"
-    // | "tradingview_webhook" | "graph_subscription_renewal"
+    // | "tradingview_webhook" | "graph_subscription_renewal" | "recategorize"
     status: text("status").notNull(), // "running" | "complete" | "failed"
     startedAt: integer("started_at").notNull(),
     finishedAt: integer("finished_at"),

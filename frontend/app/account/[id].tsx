@@ -1,9 +1,8 @@
 /**
  * Per-account transaction history — spec §9 Banks: tapping a Banks account card
  * opens this screen, which reuses TransactionFeed filtered to one account_id
- * (via GET /api/banks/:id/transactions). Also the intended nav target for the
- * Budget screen's notable transactions (scroll/highlight-to-tx is a later
- * enhancement once that Budget feature lands).
+ * (via GET /api/banks/:id/transactions). Also the nav target for the Budget
+ * screen's notable transactions, which pass ?highlight=<txId> to mark the row.
  */
 import { ScrollView, View, Text, Pressable, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -13,7 +12,7 @@ import { TransactionFeed } from "@/components/budget/TransactionFeed";
 import { useAccountTransactions } from "@/hooks/useBanks";
 
 export default function AccountTransactionsScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, highlight } = useLocalSearchParams<{ id: string; highlight?: string }>();
   const router = useRouter();
   // 30 matches TransactionFeed's own render cap, so the "showing N" note is honest.
   const { data, isLoading, isError } = useAccountTransactions(id ?? "", 30);
@@ -42,7 +41,7 @@ export default function AccountTransactionsScreen() {
           </Text>
         ) : (
           <>
-            <TransactionFeed transactions={data!.transactions} />
+            <TransactionFeed transactions={data!.transactions} highlightId={highlight} />
             {data!.hasMore && (
               <Text style={{ color: COLORS.textMuted, fontSize: 12, textAlign: "center", marginTop: 12 }}>
                 Showing the {data!.transactions.length} most recent.

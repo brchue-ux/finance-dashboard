@@ -31,19 +31,57 @@ export function normalizeDescription(raw: string): string {
 }
 
 /**
+ * Reduces a string to space-separated alphanumeric tokens, so punctuation
+ * differences can't defeat a match: "A & W" and "A&W" both become "A W".
+ */
+function tokenize(s: string): string {
+  return s
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim();
+}
+
+/**
+ * True if `rule` matches `description`. Two passes, because banks render the
+ * same merchant inconsistently and each pass fixes a different failure:
+ *
+ *  1. Token match — the rule's tokens appear as whole tokens in the
+ *     description. This is punctuation-insensitive ("A&W" vs "A & W") while
+ *     still respecting word boundaries, so "BELL" does NOT match "BELLIES".
+ *  2. Concatenated match — only for multi-word rules of reasonable length,
+ *     covering merchants written without the space ("UBER EATS" vs "UBEREATS").
+ *     Gated on length because a short collapsed rule ("A&W" -> "AW") would
+ *     match inside unrelated words.
+ */
+const MIN_CONCAT_LEN = 5;
+
+function ruleMatches(rule: string, tokenizedDescription: string): boolean {
+  const core = tokenize(rule);
+  if (!core) return false;
+
+  if ((" " + tokenizedDescription + " ").includes(" " + core + " ")) return true;
+
+  const collapsed = core.replace(/ /g, "");
+  if (core.includes(" ") && collapsed.length >= MIN_CONCAT_LEN) {
+    return tokenizedDescription.replace(/ /g, "").includes(collapsed);
+  }
+  return false;
+}
+
+/**
  * Returns the envelope name that matches, or "uncategorized".
  */
 export function categorize(
   description: string,
   envelopes: Envelope[]
 ): string {
-  const normalized = normalizeDescription(description);
+  const haystack = tokenize(normalizeDescription(description));
 
   const sorted = [...envelopes].sort((a, b) => a.sortOrder - b.sortOrder);
 
   for (const envelope of sorted) {
     for (const rule of envelope.categoryRules) {
-      if (normalized.includes(rule.toUpperCase())) {
+      if (ruleMatches(rule, haystack)) {
         return envelope.name;
       }
     }
@@ -66,6 +104,8 @@ export const DEFAULT_RULES: Record<string, string[]> = {
     "TIM HORTONS", "TIMS", "STARBUCKS", "SECOND CUP",
     "MCDONALD", "BURGER KING", "WENDY", "SUBWAY", "A&W",
     "PIZZA PIZZA", "DOMINO", "HARVEYS", "SWISS CHALET",
+    // Ahead of Utilities' "BELL" rule, which otherwise claims it on sort order.
+    "TACO BELL",
     "DOORDASH", "UBER EATS", "SKIP THE DISHES", "SKIPTHEDISHES",
   ],
   Transport: [
@@ -89,7 +129,7 @@ export const DEFAULT_RULES: Record<string, string[]> = {
     "DENTAL", "OPTOM", "PHYSIOTHERAPY", "WALK-IN",
   ],
   Entertainment: [
-    "CINEPLEX", "AMC", "STEAMCMD", "STEAM ", "PLAYSTATION",
+    "CINEPLEX", "AMC", "STEAMCMD", "STEAM ", "STEAMGAMES", "PLAYSTATION",
     "XBOX", "NINTENDO", "TICKETMASTER", "EVENTBRITE",
   ],
 };

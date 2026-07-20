@@ -1,9 +1,11 @@
-import { View, Text, FlatList } from "react-native";
+import { View, Text } from "react-native";
 import { COLORS } from "@/constants/theme";
 import type { Transaction } from "@/hooks/useBudget";
 
 interface TransactionFeedProps {
   transactions: Transaction[];
+  /** Transaction id to visually mark — set when arriving from a notable card. */
+  highlightId?: string;
 }
 
 function fmt(amount: number) {
@@ -11,7 +13,7 @@ function fmt(amount: number) {
   return amount < 0 ? `-$${abs.toFixed(2)}` : `+$${abs.toFixed(2)}`;
 }
 
-export function TransactionFeed({ transactions }: TransactionFeedProps) {
+export function TransactionFeed({ transactions, highlightId }: TransactionFeedProps) {
   return (
     <View>
       <Text style={{ color: COLORS.textPrimary, fontWeight: "700", fontSize: 16, marginBottom: 12 }}>
@@ -27,6 +29,17 @@ export function TransactionFeed({ transactions }: TransactionFeedProps) {
             paddingVertical: 10,
             borderBottomWidth: 1,
             borderBottomColor: COLORS.glassBorder,
+            // Highlight reuses the insight-card tint rather than a new colour.
+            ...(txn.id === highlightId
+              ? {
+                  backgroundColor: COLORS.insightBg,
+                  borderLeftWidth: 2,
+                  borderLeftColor: COLORS.warning,
+                  paddingLeft: 8,
+                  marginHorizontal: -8,
+                  paddingRight: 8,
+                }
+              : null),
           }}
         >
           <View style={{ flex: 1 }}>
