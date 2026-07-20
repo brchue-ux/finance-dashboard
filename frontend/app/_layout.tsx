@@ -23,6 +23,8 @@ export default function RootLayout() {
         <Stack.Screen name="reports" options={{ presentation: "card" }} />
         <Stack.Screen name="holding/[ticker]" options={{ presentation: "card" }} />
         <Stack.Screen name="connect-account" options={{ presentation: "modal" }} />
+        <Stack.Screen name="plaid-hosted-link-complete" />
+        <Stack.Screen name="snaptrade-complete" />
       </Stack>
     </QueryClientProvider>
   );

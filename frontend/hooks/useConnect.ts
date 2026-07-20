@@ -12,6 +12,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as WebBrowser from "expo-web-browser";
 import { api } from "@/lib/api";
+import { setPendingPlaidLinkToken, takePendingPlaidLinkToken } from "@/lib/pending-connection";
 
 const PLAID_REDIRECT = "finance-dashboard://plaid-hosted-link-complete";
 const SNAPTRADE_REDIRECT = "finance-dashboard://snaptrade-complete";
@@ -29,15 +30,25 @@ export function useConnectBank() {
       }>("/api/link/token/create", { platform: "native" });
       if (!hosted_link_url) throw new Error("Plaid did not return a hosted link URL.");
 
+      // Stash the token so the deep-link completion route can finalize if the
+      // redirect arrives as a route (finance-dashboard:///…) instead of resolving
+      // inside openAuthSessionAsync — which is what Hosted Link actually does.
+      setPendingPlaidLinkToken(link_token);
       const res = await WebBrowser.openAuthSessionAsync(hosted_link_url, PLAID_REDIRECT);
-      if (res.type !== "success") return "cancelled";
+      if (res.type !== "success") {
+        // Not a clean in-session return. If the deep-link route handled it, the
+        // token is already taken; otherwise the user genuinely cancelled.
+        return "cancelled";
+      }
 
-      // Hosted Link keeps the public_token server-side; we hand back only the
-      // link_token and let the backend retrieve + exchange it. Real account
-      // names/types are filled by the sync the backend runs on completion, so a
-      // generic institution label here is fine for a first connection.
+      // In-session return worked. Claim the token (so the route won't also
+      // finalize) and exchange. Hosted Link keeps the public_token server-side;
+      // the backend retrieves it from the link_token. Real account names come
+      // from the sync it runs, so a generic label is fine for a first connection.
+      const token = takePendingPlaidLinkToken();
+      if (!token) return "connected"; // route already finalized it
       await api.post("/api/plaid/hosted-complete", {
-        link_token,
+        link_token: token,
         institution_name: "Bank",
       });
       return "connected";
