@@ -67,9 +67,11 @@ export default function BanksScreen() {
               />
             ))}
 
-            {/* "+ Add account" — launches the account-connection wizard */}
+            {/* Adding one more account is a single connection, not the whole
+                first-run chain — the full wizard is offered below when the user
+                has nothing connected yet. */}
             <Pressable
-              onPress={() => router.push("/connect-account" as any)}
+              onPress={() => router.push("/connect-account?mode=single" as any)}
               style={{
                 borderWidth: 1,
                 borderColor: COLORS.glassBorder,
@@ -86,9 +88,18 @@ export default function BanksScreen() {
             </Pressable>
 
             {(accounts?.length ?? 0) === 0 && (
-              <Text style={{ color: COLORS.textMuted, fontSize: 13, textAlign: "center", marginTop: 16 }}>
-                No accounts yet. Add one to start tracking balances and transactions.
-              </Text>
+              <View style={{ marginTop: 16, alignItems: "center" }}>
+                <Text style={{ color: COLORS.textMuted, fontSize: 13, textAlign: "center" }}>
+                  No accounts yet. Add one to start tracking balances and transactions.
+                </Text>
+                {/* Nothing connected: offer the guided chain rather than making
+                    the user discover and trigger each connection separately. */}
+                <Pressable onPress={() => router.push("/connect-account" as any)} style={{ marginTop: 12 }}>
+                  <Text style={{ color: COLORS.brandPurple, fontSize: 14, fontWeight: "600" }}>
+                    Set up all my accounts
+                  </Text>
+                </Pressable>
+              </View>
             )}
           </>
         )}

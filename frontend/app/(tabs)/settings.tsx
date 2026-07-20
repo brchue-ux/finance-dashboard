@@ -157,10 +157,10 @@ export default function SettingsScreen() {
           DATA
         </Text>
         <GlassCard style={{ marginBottom: 20 }}>
-          <Pressable style={{ paddingVertical: 10 }}>
-            <Text style={{ color: COLORS.textPrimary, fontSize: 15 }}>Import historical data</Text>
+          <Pressable onPress={() => router.push("/import")} style={{ paddingVertical: 10 }}>
+            <Text style={{ color: COLORS.textPrimary, fontSize: 15 }}>Import transactions</Text>
             <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
-              Google Sheets or CSV
+              CSV upload, Google Sheets or Excel
             </Text>
           </Pressable>
         </GlassCard>
