@@ -12,6 +12,13 @@ interface TransactionFeedProps {
    * Budget feed, where the same row appears without its account.
    */
   onSplit?: (txn: Transaction) => void;
+  /** Max rows to render. Must not be smaller than the caller's fetch limit,
+   *  or a highlighted row can be fetched but never drawn. */
+  limit?: number;
+  /** Fires with the highlighted row's y offset so the caller can scroll to it.
+   *  Without this the row is tinted but left off-screen, which reads as a
+   *  generic list rather than "here is your transaction". */
+  onHighlightLayout?: (y: number) => void;
 }
 
 function fmt(amount: number) {
@@ -19,17 +26,28 @@ function fmt(amount: number) {
   return amount < 0 ? `-$${abs.toFixed(2)}` : `+$${abs.toFixed(2)}`;
 }
 
-export function TransactionFeed({ transactions, highlightId, onSplit }: TransactionFeedProps) {
+export function TransactionFeed({
+  transactions,
+  highlightId,
+  onSplit,
+  limit = 30,
+  onHighlightLayout,
+}: TransactionFeedProps) {
   return (
     <View>
       <Text style={{ color: COLORS.textPrimary, fontWeight: "700", fontSize: 16, marginBottom: 12 }}>
         Transactions
       </Text>
-      {transactions.slice(0, 30).map((txn) => (
+      {transactions.slice(0, limit).map((txn) => (
         <Pressable
           key={txn.id}
           onPress={onSplit ? () => onSplit(txn) : undefined}
           disabled={!onSplit}
+          onLayout={
+            txn.id === highlightId && onHighlightLayout
+              ? (e) => onHighlightLayout(e.nativeEvent.layout.y)
+              : undefined
+          }
           style={{
             flexDirection: "row",
             justifyContent: "space-between",
@@ -69,8 +87,18 @@ export function TransactionFeed({ transactions, highlightId, onSplit }: Transact
           >
             {fmt(txn.amount)}
           </Text>
+          {/* Without this the row is silently tappable — there was no way to
+              discover the split editor existed. */}
+          {onSplit && (
+            <Text style={{ color: COLORS.textMuted, fontSize: 18, marginLeft: 6 }}>›</Text>
+          )}
         </Pressable>
       ))}
+      {onSplit && transactions.length > 0 && (
+        <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 10 }}>
+          Tap a transaction to split it across envelopes.
+        </Text>
+      )}
     </View>
   );
 }

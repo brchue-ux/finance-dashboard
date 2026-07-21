@@ -88,9 +88,17 @@ function makeRng(seed: number) {
 async function main() {
   assertTestDatabase();
 
-  const email = process.env.SEED_EMAIL ?? "demo@test.local";
-  const password = process.env.SEED_PASSWORD ?? "test-only-not-a-real-credential";
-  const name = process.env.SEED_NAME ?? "Demo (TEST DATA)";
+  // TEST_-prefixed on purpose. This script is run with BOTH --env-file=.env.local
+  // (for ENCRYPTION_KEY / BETTER_AUTH_SECRET) and --env-file=.env.test, and
+  // .env.local sets SEED_EMAIL and SEED_PASSWORD for the *real* dev user — so
+  // reading those here would silently seed test.db with the real account's
+  // identity and credentials.
+  const email = process.env.TEST_SEED_EMAIL ?? "demo@test.local";
+  // Deliberately short and trivial: it is typed by hand on a phone during
+  // device-test sessions and only ever guards synthetic data in test.db.
+  // Never reuse it anywhere that holds real data.
+  const password = process.env.TEST_SEED_PASSWORD ?? "test1234";
+  const name = process.env.TEST_SEED_NAME ?? "Demo (TEST DATA)";
 
   // Better Auth owns password hashing, so create the user through its real
   // sign-up path rather than inserting rows by hand.

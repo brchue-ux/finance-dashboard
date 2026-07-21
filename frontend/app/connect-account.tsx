@@ -26,7 +26,10 @@ import { GradientText } from "@/components/ui/GradientText";
 import { COLORS } from "@/constants/theme";
 import { useConnectBank, useConnectBrokerage, type ConnectOutcome } from "@/hooks/useConnect";
 
-type StepKind = "bank" | "brokerage";
+// "spreadsheet" is a population path like the other two, so it belongs in the
+// wizard — but it is not an OAuth handoff: it routes to the importer instead of
+// opening a browser session, and completes when the user comes back.
+type StepKind = "bank" | "brokerage" | "spreadsheet";
 type StepState = "pending" | "connected" | "skipped";
 
 interface Step {
@@ -46,11 +49,13 @@ const WIZARD_STEPS: Step[] = [
   { key: "bank-2", kind: "bank", title: "A second bank", subtitle: "If you use more than one" },
   { key: "bank-3", kind: "bank", title: "A third bank", subtitle: "Optional" },
   { key: "brokerage", kind: "brokerage", title: "Wealthsimple", subtitle: "Investments, via SnapTrade" },
+  { key: "spreadsheet", kind: "spreadsheet", title: "A spreadsheet", subtitle: "CSV or Excel export from any institution" },
 ];
 
 const SINGLE_STEPS: Step[] = [
   { key: "bank-1", kind: "bank", title: "Bank account", subtitle: "Chequing, savings and credit cards" },
   { key: "brokerage", kind: "brokerage", title: "Investment account", subtitle: "Wealthsimple and others" },
+  { key: "spreadsheet", kind: "spreadsheet", title: "Spreadsheet import", subtitle: "CSV or Excel export from any institution" },
 ];
 
 export default function ConnectAccountScreen() {
@@ -76,6 +81,15 @@ export default function ConnectAccountScreen() {
   }
 
   async function runStep(s: Step, at: number) {
+    // Not a browser handoff — hand off to the importer screen. Mark it done on
+    // the way out so returning to the wizard doesn't strand the user on a step
+    // they already dealt with.
+    if (s.kind === "spreadsheet") {
+      setStates((prev) => ({ ...prev, [s.key]: "connected" }));
+      if (wizard && at + 1 < steps.length) setIndex(at + 1);
+      router.push("/import");
+      return;
+    }
     const mutation = s.kind === "bank" ? bank : brokerage;
     try {
       const outcome: ConnectOutcome = await mutation.mutateAsync();
@@ -151,7 +165,9 @@ export default function ConnectAccountScreen() {
           <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 10, lineHeight: 18 }}>
             {step.kind === "bank"
               ? "Opens your bank’s own secure login. This app never sees your banking credentials."
-              : "Opens SnapTrade’s secure portal to authorize read-only access to your holdings."}
+              : step.kind === "spreadsheet"
+                ? "Pick a CSV or Excel file exported from your bank. Useful for accounts that can’t be connected directly, or for history older than a live connection provides."
+                : "Opens SnapTrade’s secure portal to authorize read-only access to your holdings."}
           </Text>
 
           <Pressable onPress={() => runStep(step, index)} disabled={busy} style={{ marginTop: 16 }}>
@@ -159,7 +175,11 @@ export default function ConnectAccountScreen() {
               <ActivityIndicator color={COLORS.brandPurple} />
             ) : (
               <Text style={{ color: COLORS.brandPurple, fontWeight: "700", fontSize: 15 }}>
-                {step.kind === "bank" ? "Connect a bank" : "Connect Wealthsimple"}
+                {step.kind === "bank"
+                  ? "Connect a bank"
+                  : step.kind === "spreadsheet"
+                    ? "Choose a file"
+                    : "Connect Wealthsimple"}
               </Text>
             )}
           </Pressable>

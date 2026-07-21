@@ -19,7 +19,19 @@ import { eq, and, gte, desc } from "drizzle-orm";
 import { attributeSpend, type SplitRow } from "@/lib/budget/summarize";
 import { currentAllocation } from "@/lib/budget/reallocate";
 
-const ROLLUP_THRESHOLD = 5_000; // named constant per spec §8
+/**
+ * Months of transaction-level detail sent to the model. Everything older is
+ * collapsed to per-category monthly totals, which preserves trend without
+ * paying per-row tokens.
+ *
+ * This replaces a row-count threshold (fire only above 5,000 transactions),
+ * which never fired at a realistic single-user volume: at 1,762 transactions
+ * the budget context measured 149,803 input tokens (~$0.45 and most of a
+ * ~60s wait) on every refresh, because 14 months of raw rows went into every
+ * request. Cost and latency both scale with input size, so this is the single
+ * lever that improves both. Measured at 3 months: 17,860 tokens (~$0.054).
+ */
+const RAW_DETAIL_MONTHS = 3;
 
 export async function assembleBudgetContext(userId: string): Promise<string> {
   const now = new Date();
@@ -58,7 +70,10 @@ export async function assembleBudgetContext(userId: string): Promise<string> {
     .from(bankConnections)
     .where(eq(bankConnections.userId, userId));
 
-  const useRollup = allTxns.length > ROLLUP_THRESHOLD;
+  // Rollup is now always on: the split is by recency, not by corpus size.
+  const detailFrom = new Date(now);
+  detailFrom.setMonth(detailFrom.getMonth() - RAW_DETAIL_MONTHS);
+  const detailCutoff = detailFrom.toISOString().split("T")[0];
 
   const splitsByTxn = new Map<string, SplitRow[]>();
   for (const sp of splits) {
@@ -67,13 +82,11 @@ export async function assembleBudgetContext(userId: string): Promise<string> {
     else splitsByTxn.set(sp.transactionId, [sp]);
   }
 
-  const recentTxns = allTxns.filter((t) => t.date >= cutoffDate);
-  const olderTxns = useRollup ? allTxns.filter((t) => t.date < cutoffDate) : [];
-
-  // Monthly summaries for older data when rollup is active
-  const olderSummaries = useRollup
-    ? summarizeByMonth(olderTxns, splits)
-    : [];
+  // Raw detail for the recent window; everything else (still bounded by the
+  // 12-month cutoffDate) becomes per-category monthly totals.
+  const recentTxns = allTxns.filter((t) => t.date >= detailCutoff);
+  const olderTxns = allTxns.filter((t) => t.date >= cutoffDate && t.date < detailCutoff);
+  const olderSummaries = summarizeByMonth(olderTxns, splits);
 
   return JSON.stringify({
     currentDate: now.toISOString(),
@@ -111,8 +124,10 @@ export async function assembleBudgetContext(userId: string): Promise<string> {
       };
     }),
     olderMonthlySummaries: olderSummaries,
-    rollupActive: useRollup,
-  }, null, 2);
+    rollupConvention: `'recentTransactions' holds every transaction from the last ${RAW_DETAIL_MONTHS} months at row level. Older activity appears ONLY as per-category monthly totals in 'olderMonthlySummaries' — those months are complete, not missing. Do not describe older periods as having no data, and do not cite individual older transactions, since you only have their category totals.`,
+    // Compact, not pretty-printed: indentation cost ~29% of input tokens
+    // (149,803 -> 106,012 measured) and the model gains nothing from it.
+  });
 }
 
 export async function assemblePortfolioContext(userId: string): Promise<string> {
@@ -159,7 +174,8 @@ export async function assemblePortfolioContext(userId: string): Promise<string> 
     })),
     currentHoldings,
     recentPortfolioTransactions: recentPortfolioTxns,
-  }, null, 2);
+    // Compact for the same reason as the budget context above.
+  });
 }
 
 function summarizeByMonth(

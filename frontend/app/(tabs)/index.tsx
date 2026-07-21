@@ -117,6 +117,16 @@ export default function BudgetScreen() {
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <GradientText style={{ fontSize: 28, fontWeight: "800" }}>Budget</GradientText>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+            {/* Importing a statement is a routine, recurring action, not a
+                one-time setup chore — it stays one tap from the budget rather
+                than buried in Settings or behind the bank-connect flow. */}
+            <Pressable
+              onPress={() => router.push("/import")}
+              hitSlop={10}
+              accessibilityLabel="Import a CSV or Excel file"
+            >
+              <Text style={{ fontSize: 20 }}>⬆️</Text>
+            </Pressable>
             <Pressable onPress={() => router.push("/manage-envelopes")} hitSlop={10}>
               <Text style={{ fontSize: 20 }}>🗂️</Text>
             </Pressable>

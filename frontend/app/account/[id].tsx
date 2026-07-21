@@ -4,7 +4,7 @@
  * (via GET /api/banks/:id/transactions). Also the nav target for the Budget
  * screen's notable transactions, which pass ?highlight=<txId> to mark the row.
  */
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { ScrollView, View, Text, Pressable, ActivityIndicator, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -17,9 +17,23 @@ import type { Transaction } from "@/hooks/useBudget";
 export default function AccountTransactionsScreen() {
   const { id, highlight } = useLocalSearchParams<{ id: string; highlight?: string }>();
   const router = useRouter();
-  // 30 matches TransactionFeed's own render cap, so the "showing N" note is honest.
-  const { data, isLoading, isError } = useAccountTransactions(id ?? "", 30);
+  // Arriving from a notable/insight card, the target transaction is often older
+  // than the 30 most recent — it was then absent from the response entirely, so
+  // the highlight matched nothing and this read as a generic list. Fetch deeper
+  // when we have a specific row to find.
+  const PAGE = highlight ? 200 : 30;
+  const { data, isLoading, isError } = useAccountTransactions(id ?? "", PAGE);
   const [splitting, setSplitting] = useState<Transaction | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+
+  // Tinting a row that is off-screen is invisible; scroll it into view. Offset
+  // leaves the preceding row visible so the highlight reads as "here", not "top".
+  const scrollToHighlight = useCallback((y: number) => {
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 80), animated: true });
+  }, []);
+
+  const highlightMissing =
+    Boolean(highlight) && Boolean(data) && !data!.transactions.some((t) => t.id === highlight);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
@@ -32,7 +46,7 @@ export default function AccountTransactionsScreen() {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      <ScrollView ref={scrollRef} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         {isLoading ? (
           <ActivityIndicator color={COLORS.brandPurple} style={{ marginTop: 40 }} />
         ) : isError ? (
@@ -45,10 +59,19 @@ export default function AccountTransactionsScreen() {
           </Text>
         ) : (
           <>
+            {highlightMissing && (
+              // Say so rather than silently presenting an unhighlighted list —
+              // that ambiguity is what made this look broken on device.
+              <Text style={{ color: COLORS.warning, fontSize: 12, marginBottom: 10 }}>
+                That transaction is older than the {data!.transactions.length} shown here.
+              </Text>
+            )}
             <TransactionFeed
               transactions={data!.transactions}
               highlightId={highlight}
               onSplit={setSplitting}
+              limit={PAGE}
+              onHighlightLayout={scrollToHighlight}
             />
             {data!.hasMore && (
               <Text style={{ color: COLORS.textMuted, fontSize: 12, textAlign: "center", marginTop: 12 }}>

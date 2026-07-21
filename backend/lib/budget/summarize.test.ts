@@ -96,13 +96,39 @@ describe("summarizeEnvelopes — unconfigured vs over budget", () => {
     expect(s.remaining).toBe(0);
   });
 
-  it("treats an explicit zero allocation as unconfigured too", () => {
+  // This block previously asserted the opposite — that an explicit $0
+  // allocation is "unconfigured" — which is how the bug below shipped and
+  // survived a green suite. Once reallocation could write allocation rows,
+  // moving an envelope to $0 for the month made it render as a neutral "not
+  // set up yet" chip, and because overBudget requires !unconfigured, it also
+  // suppressed the breach. Caught on device: Shopping showed $314.63 of spend
+  // against a deliberate $0 budget and looked fine.
+  it("treats an explicit zero allocation as configured, not unconfigured", () => {
     const [s] = summarizeEnvelopes(
       [env("Groceries", 500)],
       [{ envelopeId: "groceries", allocated: 0 }],
       [txn("Groceries", -10)]
     );
+    expect(s.unconfigured).toBe(false);
+  });
+
+  it("reports overspend against a deliberate $0 allocation", () => {
+    const [s] = summarizeEnvelopes(
+      [env("Groceries", 500)],
+      [{ envelopeId: "groceries", allocated: 0 }],
+      [txn("Groceries", -314.63)]
+    );
+    expect(s.allocated).toBe(0);
+    expect(s.overBudget).toBe(true);
+    expect(s.remaining).toBeCloseTo(-314.63, 2);
+  });
+
+  it("still treats a zero standing target with no allocation row as unconfigured", () => {
+    // The original protection must survive: a never-set-up envelope is not
+    // "over budget" the moment it sees any spending.
+    const [s] = summarizeEnvelopes([env("Groceries", 0)], [], [txn("Groceries", -100)]);
     expect(s.unconfigured).toBe(true);
+    expect(s.overBudget).toBe(false);
   });
 });
 

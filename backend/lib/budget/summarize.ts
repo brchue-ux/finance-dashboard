@@ -105,9 +105,15 @@ export function summarizeEnvelopes(
       .filter((a) => a.category === env.name && a.amount < 0)
       .reduce((sum, a) => sum + Math.abs(a.amount), 0);
 
-    // A 0 target means "not set up yet". Reporting that as over budget makes
-    // every fresh envelope look breached the moment it has any spending.
-    const unconfigured = allocated <= 0;
+    // "Unconfigured" must mean "never set up", NOT "budgeted $0 this month".
+    // A 0 standing target means not set up yet, and reporting that as over
+    // budget makes every fresh envelope look breached the moment it has any
+    // spending. But once reallocation can write an allocation row, $0 becomes
+    // a deliberate choice — and treating that as unconfigured suppressed the
+    // overBudget flag below, hiding real overspend behind a neutral "not set
+    // up" chip. An explicit allocation row is configuration, even at zero.
+    const hasAllocation = allocationMap.has(env.id);
+    const unconfigured = !hasAllocation && allocated <= 0;
 
     return {
       ...env,
