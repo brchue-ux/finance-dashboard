@@ -71,7 +71,9 @@ export default function BanksScreen() {
                 first-run chain — the full wizard is offered below when the user
                 has nothing connected yet. */}
             <Pressable
-              onPress={() => router.push("/connect-account?mode=single" as any)}
+              // Opens the type picker — bank, brokerage or spreadsheet — so
+              // every population path stays reachable after onboarding.
+              onPress={() => router.push("/connect-account" as any)}
               style={{
                 borderWidth: 1,
                 borderColor: COLORS.glassBorder,
@@ -94,7 +96,7 @@ export default function BanksScreen() {
                 </Text>
                 {/* Nothing connected: offer the guided chain rather than making
                     the user discover and trigger each connection separately. */}
-                <Pressable onPress={() => router.push("/connect-account" as any)} style={{ marginTop: 12 }}>
+                <Pressable onPress={() => router.push("/connect-account?mode=wizard" as any)} style={{ marginTop: 12 }}>
                   <Text style={{ color: COLORS.brandPurple, fontSize: 14, fontWeight: "600" }}>
                     Set up all my accounts
                   </Text>

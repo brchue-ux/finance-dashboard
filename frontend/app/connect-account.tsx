@@ -61,8 +61,17 @@ const SINGLE_STEPS: Step[] = [
 export default function ConnectAccountScreen() {
   const router = useRouter();
   const { mode } = useLocalSearchParams<{ mode?: string }>();
-  const wizard = mode !== "single";
-  const steps = wizard ? WIZARD_STEPS : SINGLE_STEPS;
+  // Default is now "pick what you're adding". The guided chain is opt-in via
+  // ?mode=wizard, because it only makes sense with nothing connected yet.
+  // Previously the chain was the default and the single path was reachable
+  // only as ?mode=single from Banks, which meant that once you had any account
+  // at all, brokerage and spreadsheet were effectively unreachable — you can
+  // need any of the three at any time, not just during onboarding.
+  const wizard = mode === "wizard";
+  const [chosen, setChosen] = useState<StepKind | null>(null);
+  const steps = wizard
+    ? WIZARD_STEPS
+    : SINGLE_STEPS.filter((s) => s.kind === chosen);
 
   const bank = useConnectBank();
   const brokerage = useConnectBrokerage();
@@ -131,18 +140,57 @@ export default function ConnectAccountScreen() {
     );
   }
 
+  // Type picker: the single entry point for adding anything, at any time.
+  if (!wizard && !chosen) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
+        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }}>
+          <Pressable onPress={() => router.back()} hitSlop={12} style={{ flexDirection: "row", alignItems: "center" }}>
+            <Text style={{ color: COLORS.brandPurple, fontSize: 24, marginRight: 4 }}>‹</Text>
+            <GradientText style={{ fontSize: 20, fontWeight: "800" }}>Add an account</GradientText>
+          </Pressable>
+        </View>
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+          <Text style={{ color: COLORS.textMuted, fontSize: 13, marginBottom: 16, lineHeight: 19 }}>
+            What are you adding?
+          </Text>
+          {SINGLE_STEPS.map((s) => (
+            <Pressable key={s.key} onPress={() => setChosen(s.kind)} style={{ marginBottom: 12 }}>
+              <GlassCard>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: COLORS.textPrimary, fontWeight: "700", fontSize: 16 }}>
+                      {s.title}
+                    </Text>
+                    <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 4, lineHeight: 18 }}>
+                      {s.subtitle}
+                    </Text>
+                  </View>
+                  <Text style={{ color: COLORS.textMuted, fontSize: 20, marginLeft: 10 }}>›</Text>
+                </View>
+              </GlassCard>
+            </Pressable>
+          ))}
+          <Pressable onPress={() => router.replace("/connect-account?mode=wizard" as any)} style={{ marginTop: 12, alignSelf: "center" }}>
+            <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>Or set up several at once</Text>
+          </Pressable>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
       <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => (chosen ? setChosen(null) : router.back())}
           hitSlop={12}
           disabled={busy}
           style={{ flexDirection: "row", alignItems: "center", opacity: busy ? 0.4 : 1 }}
         >
           <Text style={{ color: COLORS.brandPurple, fontSize: 24, marginRight: 4 }}>‹</Text>
           <GradientText style={{ fontSize: 20, fontWeight: "800" }}>
-            {wizard ? "Connect your accounts" : "Add an account"}
+            {wizard ? "Connect your accounts" : step?.title ?? "Add an account"}
           </GradientText>
         </Pressable>
       </View>
