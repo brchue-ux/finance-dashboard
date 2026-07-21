@@ -9,7 +9,7 @@
  * mapping, but mapping in the UI means the user fixes it without a failed round
  * trip.
  */
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { ScrollView, View, Text, Pressable, ActivityIndicator, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -23,6 +23,7 @@ import {
   useConnectExcel,
   readFileText,
   parseCsvHeaders,
+  amountSignProfile,
   type CsvMapping,
 } from "@/hooks/useImport";
 
@@ -54,6 +55,8 @@ export default function ImportScreen() {
   const [headers, setHeaders] = useState<string[]>([]);
   const [mapping, setMapping] = useState<Partial<CsvMapping>>({});
   const [negate, setNegate] = useState(false);
+  // null = not yet answered; only consulted when the file's signs are uniform.
+  const [signChoice, setSignChoice] = useState<"spending" | "deposits" | null>(null);
   const [activeField, setActiveField] = useState<Field | null>(null);
 
   const importCsv = useImportCsv();
@@ -90,7 +93,9 @@ export default function ImportScreen() {
       {
         csv,
         mapping: mapping as CsvMapping,
-        negateAmounts: negate,
+        // When the file is uniform-sign the explicit answer decides; otherwise
+        // the manual toggle still applies.
+        negateAmounts: needsSignAnswer ? signChoice === "spending" : negate,
       },
       {
         onSuccess: (r) => {
@@ -113,7 +118,16 @@ export default function ImportScreen() {
     setActiveField(null);
   }
 
-  const ready = Boolean(mapping.date && mapping.description && mapping.amount);
+  const signs = useMemo(
+    () => (csv && mapping.amount ? amountSignProfile(csv, mapping.amount) : null),
+    [csv, mapping.amount]
+  );
+  // An all-positive file can't be imported until the user says what it means.
+  const needsSignAnswer = Boolean(signs?.uniform && signs.positive > 0);
+
+  const ready =
+    Boolean(mapping.date && mapping.description && mapping.amount) &&
+    (!needsSignAnswer || signChoice !== null);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
@@ -222,11 +236,50 @@ export default function ImportScreen() {
                 </View>
               ))}
 
-              <Pressable onPress={() => setNegate((v) => !v)} style={{ paddingVertical: 8 }}>
-                <Text style={{ color: negate ? COLORS.brandPurple : COLORS.textMuted, fontSize: 12 }}>
-                  {negate ? "✓ " : ""}My file uses positive numbers for spending
-                </Text>
-              </Pressable>
+              {/* Uniform-sign files are ambiguous, and guessing wrong silently
+                  inverts the whole import — so make it a required answer rather
+                  than a toggle that quietly defaults to one interpretation. */}
+              {signs?.uniform && signs.positive > 0 ? (
+                <View style={{ marginTop: 4, marginBottom: 4 }}>
+                  <Text style={{ color: COLORS.warning, fontSize: 13, fontWeight: "600" }}>
+                    All {signs.parsed} amounts are positive
+                  </Text>
+                  <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 4, lineHeight: 17 }}>
+                    Most bank exports list spending as positive numbers. Which is this?
+                  </Text>
+                  {([
+                    ["spending", "These are purchases — record as money out"],
+                    ["deposits", "These are deposits — record as money in"],
+                  ] as const).map(([value, label]) => {
+                    const active = signChoice === value;
+                    return (
+                      <Pressable
+                        key={value}
+                        onPress={() => setSignChoice(value)}
+                        style={{
+                          marginTop: 8,
+                          paddingVertical: 10,
+                          paddingHorizontal: 12,
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor: active ? COLORS.brandPurple : COLORS.glassBorder,
+                          backgroundColor: active ? COLORS.insightBg : "transparent",
+                        }}
+                      >
+                        <Text style={{ color: active ? COLORS.brandPurple : COLORS.textPrimary, fontSize: 13 }}>
+                          {active ? "✓ " : ""}{label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : (
+                <Pressable onPress={() => setNegate((v) => !v)} style={{ paddingVertical: 8 }}>
+                  <Text style={{ color: negate ? COLORS.brandPurple : COLORS.textMuted, fontSize: 12 }}>
+                    {negate ? "✓ " : ""}My file uses positive numbers for spending
+                  </Text>
+                </Pressable>
+              )}
 
               <Pressable
                 onPress={runImport}

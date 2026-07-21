@@ -62,6 +62,36 @@ current stack is one user tap per receipt (real browser session), which does not
 
 ---
 
+### 5. Merchant rules are Canada-only — revisit before any non-CA user
+**Phase:** Categorization / import, whenever the user base stops being just Canada.
+**Status:** Raised 2026-07-21. Deliberately deferred — the app is single-user and Canadian today.
+**Context:** `lib/categorization.ts`'s `DEFAULT_RULES` is entirely Canadian merchants
+(Loblaws, Tim Hortons, Presto, Petro-Canada, Rogers, Shoppers Drug Mart). This surfaced
+concretely when a US-merchant CSV (Aldi, Safeway, Target, ExxonMobil, PG&E, Trader Joe's)
+was imported into the test database: **41 of 50 rows came back `uncategorized`**, because
+essentially nothing overlapped. The engine worked correctly — it simply had no rules that
+could match.
+
+**Why this matters more than it looks:** an uncategorized transaction is not a visible
+error. It silently contributes to no envelope, so budgets under-report spending with no
+warning. A US or EU user's first import would look like it succeeded while leaving most of
+their spending invisible to the budget.
+
+**When revisiting, decide:**
+- Region-scoped rule sets (`DEFAULT_RULES_CA` / `_US` / `_EU`) chosen at onboarding, vs one
+  merged global set. Merged is simpler but worsens the ordering hazard below.
+- Currency: amounts are currently unit-less numbers. Multi-region implies a currency field
+  and a display/aggregation decision, which touches budget math, reports and LLM context.
+- **Ordering hazard compounds with size.** `categorize()` is first-match-wins by
+  `sortOrder`, which is already why `TACO BELL` must be listed in Restaurants ahead of
+  Utilities' `BELL`, and why `Costco Gas` matches Groceries' `COSTCO` instead of Transport.
+  A larger multi-region rule set makes such collisions more likely, not less — consider
+  most-specific-match rather than first-match before growing the list.
+**Do not** simply append US/EU merchants to the existing Canadian arrays without addressing
+the match-precedence question.
+
+---
+
 ## POST-LAUNCH — Must be reviewed after the app has real usage
 
 ### 4. Scotiabank CDBA migration — Scheduled review H2 2027

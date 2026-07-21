@@ -58,6 +58,8 @@ export function parseCsvHeaders(csv: string): string[] {
     .filter((h) => h.length > 0);
 }
 
+export { amountSignProfile, type AmountSignProfile } from "@/lib/csv-signs";
+
 /** POSTs the file contents as JSON — the route takes {csv, mapping}, not multipart. */
 export function useImportCsv() {
   return useImportMutation((body: { csv: string; mapping: CsvMapping; negateAmounts?: boolean }) =>
