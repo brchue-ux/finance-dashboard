@@ -11,11 +11,32 @@
 <!-- Last updated: 2026-07-21 (first real device tap-through; nightly batch repaired; LLM cost -81% and latency -80%; native session-cookie hijack fixed; CSV import verified working + sign-inversion guard; real 16-envelope taxonomy applied to local.db, 24%->92% coverage). -->
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 
-## ⇒ START HERE — Finance Dashboard current state (2026-07-21)
+## ⇒ START HERE — Finance Dashboard current state (2026-07-21, later)
 
-**Phase: the untested-UI queue is CLEARED. Every major write path has now been exercised by a human on a real device — envelope reallocation, transaction splits, CSV import, the Holding Detail chart.**
+**Phase: working `build-reminders.md` items 5–10 in dependency order. Four done (8, uncategorized accounting, 10, 5-engine); items 6a, 6b, 7, 6c, 6d remain. Item 9 is gated on a live brokerage connect.**
 
-**PUSH-STATE: `origin/main` = `0920ec2`. SIX commits are LOCAL-ONLY and unpushed** — `261a9f3` nightly-batch repair, `e691c4c` device-session fixes, `884cd7b` LLM latency/cost, `afd6e0f` connect type picker, `9ca3080` native session-cookie fix, `1fe1f82` web origins + ticker degradation, `4a5d345` envelope-rename history fix. Working tree clean. Verify with `git ls-remote` before trusting any push claim — this file has been wrong about it twice.
+**PUSH-STATE: `origin/main` = `816e8f9` (the earlier 9 were pushed this session). FOUR commits are LOCAL-ONLY and unpushed** — `7b52dc1` auth guard, `00f13dd` uncategorized accounting, `81f8c7d` fixture rebuild, `d92606b` categorization specificity. Working tree clean. **Verify with `git ls-remote` before trusting any push claim — this file was wrong about it twice, and was wrong again this session (it said SIX unpushed when there were NINE).**
+
+### The ordering being worked, and why it is this order
+
+Seams and instrumentation before features, so later items don't need retrofitting:
+
+1. **Item 8 — DONE.** Had to be first: there was no auth seam at all, so every route built later would have needed retrofitting.
+2. **Uncategorized accounting — DONE.** Not on the original list. It is the *measuring instrument* for items 5/6/7 — fixing categorization coverage is unverifiable while the budget silently drops uncategorized spend.
+3. **Item 10 — DONE.** The fixture everything after it is verified against.
+4. **Item 5 (engine half) — DONE.** Had to land before 6b, which grows the rule set and multiplies ordering collisions.
+5. **Item 6a → 6b → 7 → 6c → 6d — REMAINING.** 6a before 6b (a correction is the training signal); 7 reuses 6a's picker; 6c consumes 6b's merchant data; 6d is a UX call on top of 6c's taxonomy.
+
+**Item 5's region/currency half stays deferred** — single-user Canadian, that is a product trigger not a blocker.
+
+### What this session found and fixed
+
+- **Ghost sessions returned HTTP 200 with data.** `cookieCache` (30d) resolves a session with no DB lookup, so a deleted/restored/swapped-database user stayed logged in. Proven directly: with the user row gone, `/api/auth/get-session` still returned a valid session and `/api/budget` returned 200. `lib/auth-guard.ts` `requireUser()` is now the single seam (was inlined at 33 call sites); it sends `code: USER_NOT_FOUND` so the client can tell this from an ordinary 401 — it could not diagnose it alone, since its cached session also looks valid.
+- **`saved` counted uncategorized spend as saved.** Per month on real data, **2026-06 showed +$67 green when it was actually −$228**. `/api/reports` was already correct, so the two screens disagreed about the same month. Totals gained `unattributedSpent` + `totalOutflow`; Budget's "Spent" card now shows outflow, with the remainder surfaced in a tappable notice.
+- **`db/seed-test.ts` rebuilt on real data** — real 16-envelope taxonomy, verbatim bank descriptions, `[TEST]` moved OFF `description` (that field is what `categorize()` reads, so tagging it meant the fixture exercised a string production never sends). Each merchant asserts where it must land, checked before any rows are written. Found: **re-seeding was broken outright** (cleanup never deleted `transaction_splits`/`envelope_allocations`, so it died on a FK constraint once the device session created real ones — any table that gains a writer must be added there), and every merchant fired 2–5×/month so a monthly insurance premium was charged five times.
+- **`categorize()` now picks the most specific rule, not the first by sort order.** `UBER EATS` vs `UBER` and `CANADIAN TIRE` vs `CANADIAN TIRE GAS` both resolved correctly only by accident of ordering, and `sortOrder` is user-editable. **Re-categorising all 1,762 real transactions produces ZERO changes** — fragility removed without moving real money. The `BELL`/`BELLIES` case that originally motivated this was already handled by token matching, which is why the scope narrowed to "longer rule beats shorter".
+
+**Test suite: 128 → 143.** Every new group was verified able to fail by reverting the fix.
 
 ### Device session results (2026-07-21) — all VERIFIED with server-side evidence, not self-report
 
