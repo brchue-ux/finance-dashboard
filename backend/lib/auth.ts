@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { expo } from "@better-auth/expo";
+import { webOrigins } from "@/lib/web-origins";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 
@@ -25,7 +26,12 @@ export const auth = betterAuth({
   // finance-dashboard:// — must match frontend/app.config.ts's `scheme` and
   // the expoClient()'s `scheme` option. Lets the native OAuth-style redirect
   // (used to hand the session back to the app) be trusted by the server.
-  trustedOrigins: ["finance-dashboard://"],
+  // The native scheme plus every browser origin CORS already allows. Without
+  // the web origins here, Better Auth rejects an Expo *web* sign-in with 403
+  // before checking credentials — while CORS preflight passes, so the two
+  // layers disagree and the failure looks like bad credentials. Native sends
+  // no Origin header and is unaffected either way.
+  trustedOrigins: ["finance-dashboard://", ...webOrigins()],
   plugins: [expo()],
   secret: process.env.BETTER_AUTH_SECRET!,
   baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3001",

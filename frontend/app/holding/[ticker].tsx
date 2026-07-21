@@ -100,7 +100,14 @@ export default function HoldingDetailScreen() {
           </View>
         ) : chartError || bars.length === 0 ? (
           <View style={{ height: 120, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.glassBg, borderRadius: 12, borderWidth: 1, borderColor: COLORS.glassBorder }}>
-            <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>Price history unavailable</Text>
+            <Text style={{ color: COLORS.textMuted, fontSize: 13, textAlign: "center", paddingHorizontal: 16 }}>
+              {ohlcv?.unavailable
+                ? // Distinguish "we can't price this symbol" from "the request
+                  // broke" — the first is usually a ticker missing its exchange
+                  // suffix (VFV vs VFV.TO) and is not a transient failure.
+                  `No price history for ${symbol}. The rest of this position is still accurate.`
+                : "Price history unavailable"}
+            </Text>
           </View>
         ) : (
           <ChartView bars={bars} overlay={overlay} ma20={ma20} ma50={ma50} rsi={rsi} macd={macd} height={chartHeight} />

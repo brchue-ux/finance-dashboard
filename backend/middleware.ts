@@ -5,18 +5,10 @@
  * comma-separated CORS_ALLOWED_ORIGINS env var (Vercel prod + preview URLs).
  */
 import { NextRequest, NextResponse } from "next/server";
-
-const DEV_ORIGINS = [
-  "http://localhost:8081", // expo start (web)
-  "http://localhost:19006", // legacy expo web port
-];
+import { webOrigins } from "@/lib/web-origins";
 
 function allowedOrigins(): Set<string> {
-  const extra = (process.env.CORS_ALLOWED_ORIGINS ?? "")
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean);
-  return new Set([...DEV_ORIGINS, ...extra]);
+  return new Set(webOrigins());
 }
 
 function withCorsHeaders(res: NextResponse, origin: string): NextResponse {

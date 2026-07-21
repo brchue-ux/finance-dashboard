@@ -56,6 +56,18 @@ export async function GET(req: NextRequest) {
     if (cached) {
       return NextResponse.json({ bars: JSON.parse(cached.bars), cached: true, stale: true });
     }
-    throw err;
+    // No cache either. Previously this threw, so one unpriceable holding 500'd
+    // the whole Holding Detail screen — position, cost basis and P&L included,
+    // none of which depend on price history. Seen with a TSX ticker lacking its
+    // exchange suffix (VFV vs VFV.TO), which is a realistic shape for Canadian
+    // holdings. Report it as a priced-data gap instead of a request failure so
+    // the screen can render everything else and say what is missing.
+    console.error(`[ohlcv] no data for ${ticker} (${range}) and no cache:`, err);
+    return NextResponse.json({
+      bars: [],
+      cached: false,
+      unavailable: true,
+      reason: err instanceof Error ? err.message : String(err),
+    });
   }
 }

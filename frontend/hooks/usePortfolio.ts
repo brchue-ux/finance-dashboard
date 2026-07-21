@@ -48,7 +48,9 @@ export function useOHLCV(ticker: string, range: string) {
   return useQuery({
     queryKey: ["ohlcv", ticker, range],
     queryFn: () =>
-      api.get<{ bars: OHLCVBar[] }>(`/api/market/ohlcv?ticker=${ticker}&range=${range}`),
+      api.get<{ bars: OHLCVBar[]; unavailable?: boolean; stale?: boolean }>(
+        `/api/market/ohlcv?ticker=${ticker}&range=${range}`
+      ),
     staleTime: 24 * 60 * 60 * 1000, // 24 hours
   });
 }
