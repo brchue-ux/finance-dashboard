@@ -8,16 +8,52 @@
 <!-- ▛▀▀ CURRENT STATE — READ THIS FIRST, IT IS THE AUTHORITATIVE TRUTH ▀▀▜ -->
 <!-- Everything BELOW this block is historical layering kept for context.    -->
 <!-- If this block and anything below disagree, THIS BLOCK WINS.             -->
-<!-- Last updated: 2026-07-20 late (contract audit closed; budget envelopes + categorization fixed; 115-test Vitest suite; transaction splits end-to-end; envelope reallocation write path — last TODO in the codebase closed). -->
+<!-- Last updated: 2026-07-21 (first real device tap-through; nightly batch repaired; LLM cost -81% and latency -80%; native session-cookie hijack fixed; CSV import verified working + sign-inversion guard; real 16-envelope taxonomy applied to local.db, 24%->92% coverage). -->
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 
-## ⇒ START HERE — Finance Dashboard current state (2026-07-20, late session)
+## ⇒ START HERE — Finance Dashboard current state (2026-07-21)
 
-**Phase: FEATURE-COMPLETE against the audit punch list; everything statically verified, a growing queue awaiting one device session.**
+**Phase: the untested-UI queue is CLEARED. Every major write path has now been exercised by a human on a real device — envelope reallocation, transaction splits, CSV import, the Holding Detail chart.**
 
-**PUSH-STATE (corrected 2026-07-20 late via `git ls-remote`): `origin/main` = `0920ec2` — everything through the envelope-reallocation commit is PUSHED.** The earlier line here claiming `b394bd8` with 2 local-only commits was stale. Remote carries no `.db`.
+**PUSH-STATE: `origin/main` = `0920ec2`. SIX commits are LOCAL-ONLY and unpushed** — `261a9f3` nightly-batch repair, `e691c4c` device-session fixes, `884cd7b` LLM latency/cost, `afd6e0f` connect type picker, `9ca3080` native session-cookie fix, `1fe1f82` web origins + ticker degradation, `4a5d345` envelope-rename history fix. Working tree clean. Verify with `git ls-remote` before trusting any push claim — this file has been wrong about it twice.
 
-**⚠ UNCOMMITTED WORK IN THE TREE (2026-07-20, nightly-batch repair) — not committed, not pushed:** `backend/lib/llm/parse-cards.ts` (+ its test), `backend/lib/jobs/nightly.ts`, `backend/lib/jobs/job-runs.ts`, `backend/lib/llm/advisory.ts`, `backend/db/schema.ts`, `frontend/app/{developer,system-status}.tsx`, `.claude/wayfinder/build-reminders.md`. See the NIGHTLY BATCH block below.
+### Device session results (2026-07-21) — all VERIFIED with server-side evidence, not self-report
+
+- **Envelope reallocation works.** Approve → write, with **total budgeted conserved at $2,320** across five moves.
+- **Transaction splits work.** Parent `-$84.49`, two parts summing to exactly `-$84.49`. Invariant held.
+- **CSV import works** — first time the document picker has ever run. `POST /api/import/csv 200`, 209→259 transactions.
+- **Holding Detail chart works** (needed holdings seeded — see below).
+- **Rule learned:** a user saying "it worked" is not evidence. Twice, "all worked" meant *navigation* worked while CSV and splits had **zero** server traffic. Check `job_runs`, the request log and row counts before believing a green light — see [[feedback-real-verification]].
+
+### What that session exposed (all fixed)
+
+1. **`$0` allocation masked overspend.** `unconfigured` was `allocated <= 0`, conflating "never set up" with "deliberately $0 this month"; since `overBudget` required `!unconfigured`, a $0 envelope could never report a breach — Shopping hid **$314.63** of spend behind a neutral chip. **A PASSING TEST asserted the wrong behaviour**, so a green suite was protecting the defect.
+2. **Notable-card → transaction never landed on the row.** Three compounding causes: the screen fetched only the 30 most recent (older targets absent entirely), `TransactionFeed` separately capped rendering at 30, and nothing ever scrolled.
+3. **Native session hijack — the big one.** `/api/import/excel/start` legitimately sets `ms_oauth_state`; the app fetched it through the authenticated client, Android's OkHttp jar captured it, and with `credentials:"include"` the jar **overrode the manual Cookie header**. Every later request carried `cookies=ms_oauth_state len=51` instead of the session (`len=1013`) → 401 → `lib/api.ts` called `signOut()` on ANY 401 → logged out. Fixed with `credentials:"omit"` on native + retry-then-verify before signing out. **Diagnosed with a temporary middleware cookie probe, since guessing had already failed twice.**
+4. **CSV import silently inverted every transaction.** All 50 rows positive (debit-positive export) with the negate toggle defaulting off → purchases recorded as income, inflating a month by ~$2.9k. Now blocks on uniform-sign files until the user answers. Logic lives in `frontend/lib/csv-signs.ts`, RN-free so it is testable.
+5. **Envelope rename destroyed history** — see the taxonomy block below.
+
+### LLM cost and latency (2026-07-21)
+
+- **Context: 149,803 → 28,674 tokens, $0.4494 → $0.0860 per refresh (81%).** `ROLLUP_THRESHOLD` fired only above 5,000 transactions so never fired at 1,762 — 14 months of raw rows in every request. Now recency-based (3 months raw + monthly rollups). Pretty-printed JSON alone cost 29%.
+- **Latency is NOT input-bound — that assumption was wrong and measurement corrected it.** 143.9s with web search vs 30.7s without: the tool loop was ~113s. Budget cards are arithmetic over the user's own transactions and need no web, so `assembleTools(purpose)` gives budget-cards **no tools**; portfolio/chat keep web search + MCP. **28.5s.**
+- **Cards are now always served from cache and refreshed behind the response** (32ms cached, 35ms forced, in-flight dedupe, client polls while `refreshing`). Only a true cold start blocks. **The dedupe is module state + post-response work — sound on Railway/`next dev`, NOT on serverless.**
+
+### Real envelope taxonomy applied to `local.db` (2026-07-21)
+
+Backed up first to `~/.secrets/local-db-backups/`. Built **16 envelopes from the household's actual merchants** — added Insurance, Home & Hardware, Personal Care, Fitness & Recreation, Kids & Activities, Cannabis, Travel, Home Services, Fees & Interest. **Coverage 24% → 92% of spend** (925 uncategorized / $72,723 → 212 / $8,116). Walmart → Groceries (170 txns; a Supercentre trip is mostly food, split the big ones later). Targets derived from **17 months of real averages: $5,255/mo**. Regression checks pass — `M.T. BELLIES` → Restaurants (the `BELL` false match did not return); individual rows read per envelope, not just totals.
+
+**⚠ Do NOT ship that 16-envelope list as `DEFAULT_RULES`.** Per the user: *"envelope sets can't be rigid or thrust upon and forced to conform."* It encodes one Ontario household as everyone's default. The reusable part is the **method** — cluster the user's own merchants and propose. See `build-reminders.md` item 6.
+
+**Rename bug found and fixed (`4a5d345`):** `transactions.category` and `transaction_splits.category` store the envelope **name**, and PATCH updated only the envelope — so a rename orphaned all history ($400 → $0, proven before fixing). Both tables now migrate in one `db.transaction()`. Renaming is how a user makes the app fit their categories, so it must not cost them their history.
+
+**Known-and-accepted:** targets from historical averages mean June 2026 shows **9 of 16 envelopes OVER** ($6,933 vs $5,255). Deliberately not "fixed" by inflating targets — that would be shaping data to suit the build. It is a UX question (trending-vs-typical), logged as build-reminders 6d.
+
+### Open items → `build-reminders.md` items 6–10
+Per-transaction recategorization + a learning loop (6a/6b); derive envelopes from the user's own merchants (6c); over-budget framing (6d); import category-match warning (7); session valid for 30 days against a deleted/restored user (8); confirm SnapTrade's TSX ticker format (9); rebuild `db/seed-test.ts` around a realistic taxonomy (10). Canada-only merchant rules is item 5.
+
+### Environment right now
+`next dev` on **3011 is pointed at `test.db`** (`--env-file=.env.local --env-file=.env.test`). Device login **`demo@test.local` / `test1234`**. Metro on 8082 with `EXPO_PUBLIC_API_URL=http://192.168.68.62:3011`. To go back to real data, restart without `--env-file=.env.test` **and sign out/in** — the 30-day signed cookie cache survives the swap (build-reminders 8). Dev-client APK is **versionCode 2** (set explicitly in `app.config.ts`; `eas.json` `autoIncrement` is rejected with a dynamic `app.config.ts`), so builds now install over each other without an uninstall.
 
 ## ⇒ NIGHTLY BATCH WAS SILENTLY HALF-BROKEN — FIXED 2026-07-20 (uncommitted)
 

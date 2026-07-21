@@ -92,6 +92,95 @@ the match-precedence question.
 
 ---
 
+### 6. Envelopes must bend to the user, not the reverse — the remaining rigidity
+**Phase:** Categorization / budget UX. Raised by the user 2026-07-21: *"envelope sets can't
+be rigid or thrust upon and forced to conform. they need to be friendly to the users
+categories."*
+**Status:** One concrete bug found and FIXED (`4a5d345` — rename silently destroyed history,
+because `transactions.category` / `transaction_splits.category` store the envelope *name*
+and PATCH only updated the envelope row; proven at $400 → $0 before fixing). The rest below
+is deliberately deferred.
+
+**a. A user cannot recategorize a single transaction.** There is no route for it —
+`/api/transactions/[id]` exposes only `/splits`. If the engine files a butcher under
+Restaurants, the only recourse is editing rules and re-running a bulk recategorize. This is
+the sharpest form of forcing conformity: the engine's guess is final. **Build a
+`PATCH /api/transactions/:id` (category) plus a picker on the row.**
+
+**b. There is no learning loop.** Even with (a), the next transaction from that merchant
+repeats the mistake, because rules are hand-authored strings. A correction should teach the
+rule — e.g. persist a per-user merchant→envelope override consulted ahead of
+`DEFAULT_RULES`. Note this interacts with item 5: a growing rule set worsens the
+first-match-wins ordering hazard.
+
+**c. Derive the envelope set from the user's own spending instead of shipping a taxonomy.**
+On 2026-07-21 a 16-envelope set was built **by hand** from this household's real merchants
+(adding Insurance, Home & Hardware, Personal Care, Fitness & Recreation, Kids & Activities,
+Cannabis, Travel, Home Services, Fees & Interest) and lifted categorization coverage from
+**24% → 92% of spend** (925 uncategorized txns / $72,723 → 212 / $8,116). **Do not ship that
+list as `DEFAULT_RULES`** — it encodes one Ontario household's life as everyone's starting
+point, which is the same imposition with a longer list. **The reusable part is the method**:
+cluster the user's actual merchants and *propose* — "here are nine categories we noticed in
+your spending; keep, rename, or merge." Defaults become an editable proposal.
+
+**d. Targets set from historical averages make over-budget the normal state.** Targets were
+derived from 17 months of real averages ($5,255/mo across 16 envelopes). June 2026 then
+showed **9 of 16 envelopes OVER** ($6,933 actual). That is arithmetically correct and was
+deliberately NOT "fixed" by inflating targets — but a realistic month rendering as a wall of
+red is a design question. Consider a *trending vs typical* framing rather than pass/fail when
+the target is itself an average.
+
+---
+
+### 7. Import: warn about categories that match no envelope
+**Phase:** Import. Raised 2026-07-21 alongside the sign-inversion guard (shipped, `1cd29f9`).
+**Context:** A CSV carrying its own category column can import cleanly while most rows land
+in categories that match no envelope — observed at **6 of 10 categories unmatched**, so those
+rows contributed to no budget at all. Like the sign inversion, it is **silent**: 200 response,
+`import_csv complete`, success message.
+**Build:** before committing an import, report "6 of 10 categories don't match an envelope —
+31 rows won't count toward any budget", and offer the obvious near-misses as a mapping
+(Dining→Restaurants, Gas→Transport, Health→Healthcare).
+
+---
+
+### 8. Session survives a deleted or restored user for up to 30 days
+**Phase:** Auth hardening. Found 2026-07-20 while swapping databases.
+**Context:** `lib/auth.ts` sets `cookieCache: { enabled: true, maxAge: 30 days }`, so Better
+Auth resolves a session from a **signed cookie with no DB lookup**. Pointing the server at a
+different database left the client "logged in" as a user that did not exist there — every
+query returned empty and every write failed `FOREIGN KEY constraint failed`, instead of a
+clean 401.
+**Why it matters beyond dev:** the same holds for a genuinely deleted account or a
+restore-from-backup — the session stays valid for up to a month against a nonexistent user,
+failing as empty screens and 500s rather than a login prompt.
+**Build:** treat "session resolves but user row missing" as unauthenticated.
+
+---
+
+### 9. Confirm SnapTrade's ticker format for TSX holdings
+**Phase:** Portfolio / market data. Found 2026-07-21.
+**Context:** Yahoo needs an exchange suffix for Canadian listings — `VFV` fails schema
+validation, `VFV.TO` returns 53 bars. Unpriceable tickers no longer 500 the Holding Detail
+screen (`1fe1f82`, now degrades to "No price history for X"), **but it is unverified whether
+SnapTrade returns bare or suffixed symbols.** If bare, every Canadian ETF in a real portfolio
+takes the degraded path.
+**Do:** on first live brokerage connect, inspect the returned `ticker` values; if bare, map
+to an exchange suffix before calling market data.
+
+---
+
+### 10. Rebuild the test seed around a realistic taxonomy
+**Phase:** Test fixtures. Raised by the user 2026-07-21: test data should be *accurate user
+data*, with the build working around it — not data shaped so testing passes.
+**Context:** `db/seed-test.ts` still generates 7 synthetic envelopes with `[TEST]` merchants
+that no real rule matches. A CSV of US merchants imported during device testing left 41 of 50
+rows uncategorized purely because the fixture and the rules came from different worlds.
+**Do:** seed real Canadian merchants and the richer envelope set so the fixture exercises the
+real matcher. Keep the `[TEST]` marker and the `/test/i` DATABASE_URL guard.
+
+---
+
 ## POST-LAUNCH — Must be reviewed after the app has real usage
 
 ### 4. Scotiabank CDBA migration — Scheduled review H2 2027
