@@ -77,11 +77,30 @@ export function normalizeMappedRows(
 
 const MANUAL_ACCOUNT_NAME = "Imported transactions";
 
-export async function ensureManualAccount(userId: string): Promise<string> {
+/**
+ * Find or create the account an import lands in.
+ *
+ * `name` matters more than it looks. Without it every CSV ever imported shares
+ * one bucket, so a chequing export and a credit-card export become the same
+ * "account" — which makes a payment from one to the other look like it never
+ * left anywhere. Transfers only make sense between distinguishable accounts,
+ * and the Banks screen shows one blob otherwise. Existing callers keep the
+ * original single-bucket behaviour by passing nothing.
+ */
+export async function ensureManualAccount(
+  userId: string,
+  name: string = MANUAL_ACCOUNT_NAME
+): Promise<string> {
   const [existing] = await db
     .select({ id: bankAccounts.id })
     .from(bankAccounts)
-    .where(and(eq(bankAccounts.userId, userId), eq(bankAccounts.type, "manual")))
+    .where(
+      and(
+        eq(bankAccounts.userId, userId),
+        eq(bankAccounts.type, "manual"),
+        eq(bankAccounts.name, name)
+      )
+    )
     .limit(1);
   if (existing) return existing.id;
 
@@ -91,7 +110,7 @@ export async function ensureManualAccount(userId: string): Promise<string> {
     userId,
     connectionId: null,
     plaidAccountId: null,
-    name: MANUAL_ACCOUNT_NAME,
+    name,
     type: "manual",
     mask: null,
     institution: "Manual import",
@@ -99,14 +118,49 @@ export async function ensureManualAccount(userId: string): Promise<string> {
   return id;
 }
 
+/**
+ * Identity of a transaction for duplicate detection.
+ *
+ * Note what this deliberately CANNOT distinguish: two genuinely separate
+ * transactions with the same date, description and amount. Banks provide no
+ * per-row id in a CSV export, so they are indistinguishable by content. They
+ * are common in real data — three $50 transfers to the same place on one day —
+ * which is why callers must compare COUNTS rather than mere presence.
+ */
 const fingerprint = (r: { date: string; description: string; amount: number }) =>
   `${r.date}|${r.description.trim()}|${r.amount.toFixed(2)}`;
 
+/**
+ * Build the duplicate test for one import run, given what is already stored.
+ *
+ * Counts, not presence. Presence-only dedup silently destroyed real data: on a
+ * real chequing export it dropped 74 rows worth $7,294, because three separate
+ * $50 transfers on one day are byte-identical to one transfer imported three
+ * times. Counting keeps re-importing the same file idempotent — the file must
+ * contain MORE copies than the database already holds for a row to be new.
+ *
+ * Stateful across calls within a run by design: each call consumes one copy.
+ * Pure and exported so this can be tested without a database, since the bug it
+ * fixes is invisible in aggregate row counts.
+ */
+export function duplicateFilter(existingFingerprints: string[]): (fp: string) => boolean {
+  const remaining = new Map<string, number>();
+  for (const fp of existingFingerprints) remaining.set(fp, (remaining.get(fp) ?? 0) + 1);
+
+  return (fp: string) => {
+    const left = remaining.get(fp) ?? 0;
+    if (left === 0) return false;
+    remaining.set(fp, left - 1);
+    return true;
+  };
+}
+
 export async function importRows(
   userId: string,
-  rows: NormalizedRow[]
+  rows: NormalizedRow[],
+  accountName?: string
 ): Promise<{ imported: number; duplicates: number; accountId: string }> {
-  const accountId = await ensureManualAccount(userId);
+  const accountId = await ensureManualAccount(userId, accountName);
   const now = Math.floor(Date.now() / 1000);
 
   const existing = await db
@@ -117,7 +171,7 @@ export async function importRows(
     })
     .from(transactions)
     .where(eq(transactions.userId, userId));
-  const seen = new Set(existing.map(fingerprint));
+  const isDuplicate = duplicateFilter(existing.map(fingerprint));
 
   const envelopes = await db
     .select({
@@ -136,12 +190,10 @@ export async function importRows(
   let duplicates = 0;
 
   for (const row of rows) {
-    const fp = fingerprint(row);
-    if (seen.has(fp)) {
+    if (isDuplicate(fingerprint(row))) {
       duplicates++;
       continue;
     }
-    seen.add(fp); // in-file duplicates dedup against each other too
 
     await db.insert(transactions).values({
       id: uuidv4(),
