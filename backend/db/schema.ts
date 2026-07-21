@@ -170,6 +170,12 @@ export const transactions = sqliteTable("transactions", {
   // The value records what decided that ("rule" | "manual") so a re-run cannot
   // silently undo a correction, same contract as categorySource.
   transferSource: text("transfer_source"),
+  // Non-NULL means this row sits OUTSIDE the period where we hold data from
+  // every account, so it is stored and categorized but kept out of every total.
+  // A month with only Wealthsimple dividends and no bank data is not a budget —
+  // it is a fragment that reads as if the household earned $40 and spent
+  // nothing. The value records why it was set aside.
+  coverage: text("coverage"),
   pfCategoryPrimary: text("pf_category_primary"), // Plaid personal_finance_category.primary — second signal
   pfCategoryDetailed: text("pf_category_detailed"), // Plaid personal_finance_category.detailed
   paymentChannel: text("payment_channel"), // "online" | "in store" | "other"

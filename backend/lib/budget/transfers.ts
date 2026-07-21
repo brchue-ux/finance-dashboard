@@ -57,16 +57,27 @@ export function matchesTransferPattern(description: string, patterns: string[]):
 }
 
 /**
- * Drop transfers before any budget arithmetic runs.
+ * The rows a budget total is allowed to see.
  *
  * Applied at the entry of each summarize function rather than patched into
  * each total separately: income, outflow, unattributed spend, per-envelope
- * spend and `saved` all derive from the same rows, so removing the rows once
- * makes every downstream figure correct by construction instead of by five
- * agreeing edits.
+ * spend and `saved` all derive from the same rows, so removing them once makes
+ * every downstream figure correct by construction instead of by five agreeing
+ * edits.
+ *
+ * Two reasons a row is held back, and they are genuinely different questions:
+ *
+ *   transferSource — this is money moving between the user's own accounts, so
+ *     it is neither earning nor spending no matter when it happened.
+ *   coverage — this period predates the data we hold from other accounts. The
+ *     row is real and correctly categorized; it just cannot be added to a month
+ *     whose other accounts are missing, or the month reads as though the
+ *     household earned $40 and spent nothing.
  */
-export function withoutTransfers<T extends { transferSource?: string | null }>(rows: T[]): T[] {
-  return rows.filter((r) => !r.transferSource);
+export function budgetRows<T extends { transferSource?: string | null; coverage?: string | null }>(
+  rows: T[]
+): T[] {
+  return rows.filter((r) => !r.transferSource && !r.coverage);
 }
 
 /**

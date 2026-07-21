@@ -6,7 +6,7 @@
  * is plausible-looking rather than obviously broken, which is exactly why it
  * needs tests rather than eyeballing.
  */
-import { withoutTransfers } from "@/lib/budget/transfers";
+import { budgetRows } from "@/lib/budget/transfers";
 
 /** Envelope row as stored — categoryRules is still JSON text at this point. */
 export interface EnvelopeRow {
@@ -30,9 +30,11 @@ export interface TransactionRow {
   merchantName: string | null;
   amount: number;
   category: string | null;
-  /** Non-null means this row is a transfer between the user's own accounts and
-   *  is excluded from every figure here. See lib/budget/transfers.ts. */
+  /** Either being non-null holds this row out of every figure here — a transfer
+   *  between the user's own accounts, or a period we lack other accounts for.
+   *  See lib/budget/transfers.ts. */
   transferSource?: string | null;
+  coverage?: string | null;
 }
 
 export interface SplitRow {
@@ -101,7 +103,7 @@ export function summarizeEnvelopes(
   // A per-month allocation overrides the envelope's standing target, which is
   // how reallocation works without rewriting the envelope itself.
   const allocationMap = new Map(allocations.map((a) => [a.envelopeId, a.allocated]));
-  const attributed = attributeSpend(withoutTransfers(monthTxns), splits);
+  const attributed = attributeSpend(budgetRows(monthTxns), splits);
 
   return envelopes.map((env) => {
     const allocated = allocationMap.get(env.id) ?? env.monthlyTarget;
@@ -159,7 +161,7 @@ export function computeNotableTransactions(
   // Measured per split, not per transaction: a $200 shop split 50/50 across two
   // envelopes is two ordinary charges, not one outsized one. Using the parent
   // total would flag it in both.
-  const attributed = attributeSpend(withoutTransfers(monthTxns), splits);
+  const attributed = attributeSpend(budgetRows(monthTxns), splits);
 
   return summaries
     .filter((env) => env.allocated > 0)
@@ -197,7 +199,7 @@ export function summarizeTotals(
   // outflow, unattributed spend and `saved` all derive from these same rows, so
   // one filter makes every figure correct by construction instead of by four
   // separate edits that have to agree.
-  const spendable = withoutTransfers(monthTxns);
+  const spendable = budgetRows(monthTxns);
   const attributed = attributeSpend(spendable, splits);
   const envelopeNames = new Set(summaries.map((e) => e.name));
 

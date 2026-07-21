@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   matchesTransferPattern,
-  withoutTransfers,
+  budgetRows,
   SUGGESTED_TRANSFER_PATTERNS,
 } from "./transfers";
 import { summarizeTotals, summarizeEnvelopes, type TransactionRow } from "./summarize";
@@ -65,15 +65,30 @@ function txn(over: Partial<TransactionRow>): TransactionRow {
   };
 }
 
-describe("withoutTransfers", () => {
-  it("drops only rows carrying a transfer source", () => {
+describe("budgetRows", () => {
+  it("drops rows carrying a transfer source", () => {
     const rows = [
       txn({ id: "keep", transferSource: null }),
       txn({ id: "keep2" }),
       txn({ id: "drop", transferSource: "rule" }),
       txn({ id: "drop2", transferSource: "manual" }),
     ];
-    expect(withoutTransfers(rows).map((r) => r.id)).toEqual(["keep", "keep2"]);
+    expect(budgetRows(rows).map((r) => r.id)).toEqual(["keep", "keep2"]);
+  });
+
+  // Wealthsimple history reaches back to 2021; the bank exports start in May
+  // 2025. A 2023 month would otherwise show a $40 dividend and no spending at
+  // all, which reads as a wildly profitable month rather than a data gap.
+  it("drops rows from a period the other accounts do not cover", () => {
+    const rows = [
+      txn({ id: "keep" }),
+      txn({ id: "old", date: "2023-04-01", amount: 40, coverage: "before_bank_data" }),
+    ];
+    expect(budgetRows(rows).map((r) => r.id)).toEqual(["keep"]);
+  });
+
+  it("keeps a row that is neither a transfer nor out of coverage", () => {
+    expect(budgetRows([txn({ id: "a", transferSource: null, coverage: null })])).toHaveLength(1);
   });
 });
 

@@ -12,7 +12,7 @@ import { db } from "@/db";
 import { bankAccounts, bankBalanceSnapshots, portfolioSnapshots, transactions, transactionSplits } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { attributeSpend } from "@/lib/budget/summarize";
-import { withoutTransfers } from "@/lib/budget/transfers";
+import { budgetRows } from "@/lib/budget/transfers";
 
 export async function GET(req: NextRequest) {
   const authed = await requireUser(req);
@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
         amount: transactions.amount,
         category: transactions.category,
         transferSource: transactions.transferSource,
+        coverage: transactions.coverage,
       })
       .from(transactions)
       .where(eq(transactions.userId, userId)),
@@ -108,7 +109,7 @@ export async function GET(req: NextRequest) {
   // computes its own cash-flow figures, so it would otherwise keep reporting
   // credit-card payments as income while the Budget screen no longer did, and
   // the two screens would disagree about the same month.
-  const txnsForFlow = withoutTransfers(txns);
+  const txnsForFlow = budgetRows(txns);
 
   const trendMap = new Map<string, Map<string, number>>(); // month → category → spend
   const flowMap = new Map<string, { income: number; expenses: number }>();
