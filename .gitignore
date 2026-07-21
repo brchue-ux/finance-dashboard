@@ -11,7 +11,12 @@ dist/
 .autosync
 .claude/settings.local.json
 
-# Real financial data — never commit
+# Real financial data — never commit.
+# The whole folder, not a filename pattern: these are bank exports dropped in by
+# hand with whatever name the bank chose ("Chequing.CSV"), and the RBC export
+# carries the full card number in every row. A pattern only covers the export
+# whose name someone thought to add.
+Transactions/
 download-transactions*.csv
 # Device debug screenshots (may show account details)
 error screenshots/
