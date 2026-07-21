@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
-import { budgetEnvelopes } from "@/db/schema";
+import { budgetEnvelopes, transactions, transactionSplits } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 
 async function ownedEnvelope(req: NextRequest, id: string) {
@@ -67,9 +67,33 @@ export async function PATCH(
     return NextResponse.json({ error: "No supported fields to update" }, { status: 400 });
   }
 
-  await db.update(budgetEnvelopes).set(patch).where(eq(budgetEnvelopes.id, id));
+  // A rename must carry history with it. transactions.category and
+  // transaction_splits.category both store the envelope NAME, so updating the
+  // envelope alone orphans every past row: they keep the old name, match no
+  // active envelope, and silently drop out of budget math. Verified before
+  // fixing — renaming an envelope with $400 of spend reported $0 afterwards.
+  // The schema comment already promised past rows survive a rename; this makes
+  // that true. Renaming is how a user makes the app fit their own categories,
+  // so it must not cost them their history.
+  const oldName = found.row.name;
+  const newName = patch.name;
+  const renaming = typeof newName === "string" && newName !== oldName;
 
-  return NextResponse.json({ ok: true });
+  await db.transaction(async (tx) => {
+    await tx.update(budgetEnvelopes).set(patch).where(eq(budgetEnvelopes.id, id));
+    if (renaming) {
+      await tx
+        .update(transactions)
+        .set({ category: newName })
+        .where(and(eq(transactions.userId, found.userId), eq(transactions.category, oldName)));
+      await tx
+        .update(transactionSplits)
+        .set({ category: newName })
+        .where(and(eq(transactionSplits.userId, found.userId), eq(transactionSplits.category, oldName)));
+    }
+  });
+
+  return NextResponse.json({ ok: true, renamedFrom: renaming ? oldName : undefined });
 }
 
 export async function DELETE(
