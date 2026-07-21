@@ -160,6 +160,16 @@ export const transactions = sqliteTable("transactions", {
   amount: real("amount").notNull(), // negative = debit, positive = credit
   isoCurrencyCode: text("iso_currency_code"),
   category: text("category"), // envelope name assigned (app's own engine)
+  // How `category` got its value. "manual" means the user set it by hand, and a
+  // bulk recategorize must not overwrite it — see app/api/budget/recategorize.
+  // NULL is read as "rule": every row predates this column, and none of them
+  // were hand-set (there was no route to do it before build-reminders 6a).
+  categorySource: text("category_source"), // "rule" | "manual" | NULL (= rule)
+  // Non-NULL means this row is money moving between the user's OWN accounts,
+  // and is excluded from both income and spending — see lib/budget/transfers.ts.
+  // The value records what decided that ("rule" | "manual") so a re-run cannot
+  // silently undo a correction, same contract as categorySource.
+  transferSource: text("transfer_source"),
   pfCategoryPrimary: text("pf_category_primary"), // Plaid personal_finance_category.primary — second signal
   pfCategoryDetailed: text("pf_category_detailed"), // Plaid personal_finance_category.detailed
   paymentChannel: text("payment_channel"), // "online" | "in store" | "other"
