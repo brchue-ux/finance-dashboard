@@ -34,7 +34,12 @@ export async function startJobRun(jobType: JobType, userId?: string): Promise<st
 
 export async function finishJobRun(
   id: string,
-  outcome: { status: "complete" | "failed"; errorMessage?: string; metadata?: Record<string, unknown> }
+  outcome: {
+    /** "partial" = some units of work succeeded and some failed; must not read as green. */
+    status: "complete" | "partial" | "failed";
+    errorMessage?: string;
+    metadata?: Record<string, unknown>;
+  }
 ): Promise<void> {
   await db
     .update(jobRuns)

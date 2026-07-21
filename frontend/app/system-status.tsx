@@ -24,6 +24,8 @@ function timeAgo(unixSeconds: number | null): string {
 function statusColor(status: string | null): string {
   if (status === "complete" || status === "active") return COLORS.success;
   if (status === "failed") return COLORS.danger;
+  // A run where only some units of work succeeded must not read as green.
+  if (status === "partial") return COLORS.warning;
   if (status === "running") return COLORS.brandPurple;
   return COLORS.warning;
 }

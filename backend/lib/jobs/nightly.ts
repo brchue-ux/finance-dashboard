@@ -19,12 +19,19 @@ import { v4 as uuidv4 } from "uuid";
 import { SYSTEM_PROMPT, AUTO_CARD_INSTRUCTION } from "@/lib/llm/prompts";
 import { assembleBudgetContext, assemblePortfolioContext } from "@/lib/llm/context";
 import { NO_INDICATOR_DATA_CLAUSE } from "@/lib/llm/tools";
+import { parseCards } from "@/lib/llm/parse-cards";
 import { syncPlaidForUser } from "@/lib/sync/plaid";
 import { syncSnapTradeForUser } from "@/lib/sync/snaptrade";
 import { startJobRun, finishJobRun } from "@/lib/jobs/job-runs";
 
 const MODEL = "claude-sonnet-4-6"; // keep in step with lib/llm/advisory.ts
-const MAX_OUTPUT_TOKENS = 1500;
+
+// Server tools emit their `server_tool_use` blocks into this same output
+// budget. At 1500 a real batch item spent the entire budget on a web_search
+// call and ended `stop_reason: "max_tokens"` having produced zero text.
+// Batch items have no HTTP timeout to stay under, so the ceiling only needs to
+// bound cost.
+const MAX_OUTPUT_TOKENS = 16000;
 
 const anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
@@ -138,20 +145,33 @@ export async function pollPendingBatches(): Promise<void> {
       const now = Math.floor(Date.now() / 1000);
       let succeeded = 0;
       let failed = 0;
+      // Per-item outcomes. Previously an item failure logged only its result
+      // type to the console and metadata carried bare counts, so a failing
+      // nightly left nothing on disk to diagnose from.
+      const items: { view: string; outcome: string; detail?: string }[] = [];
 
       for await (const result of await anthropicClient.beta.messages.batches.results(meta.batchId)) {
         const view = result.custom_id.split("_").pop() as "budget" | "portfolio";
+
         if (result.result.type !== "succeeded") {
           failed++;
-          console.error(`[nightly] batch item ${result.custom_id}: ${result.result.type}`);
+          // `error` is the API's error *envelope*; the type/message sit inside it.
+          const detail =
+            result.result.type === "errored"
+              ? `${result.result.error.error.type}: ${result.result.error.error.message}`
+              : undefined;
+          items.push({ view, outcome: result.result.type, ...(detail ? { detail } : {}) });
+          console.error(`[nightly] batch item ${result.custom_id}: ${result.result.type}`, detail ?? "");
           continue;
         }
 
-        const text = result.result.message.content
+        const message = result.result.message;
+        const text = message.content
           .flatMap((block) => (block.type === "text" ? [block.text] : []))
           .join("");
+
         try {
-          const cards = (JSON.parse(text) as { cards: unknown[] }).cards;
+          const cards = parseCards(text);
           await db
             .insert(llmAnalysisCache)
             .values({
@@ -167,16 +187,35 @@ export async function pollPendingBatches(): Promise<void> {
               set: { lastAnalyzedAt: now, output: JSON.stringify(cards) },
             });
           succeeded++;
-        } catch {
+          items.push({ view, outcome: "ok", detail: `${cards.length} cards` });
+        } catch (err) {
           failed++;
-          console.error(`[nightly] batch item ${result.custom_id}: invalid card JSON`);
+          // stop_reason distinguishes a truncated response from a model that
+          // finished but emitted something unparseable — different fixes.
+          const detail = `stop_reason=${message.stop_reason}; ${
+            err instanceof Error ? err.message : String(err)
+          }`;
+          items.push({ view, outcome: "unusable_output", detail });
+          console.error(`[nightly] batch item ${result.custom_id}: ${detail}`);
         }
       }
 
+      // A run that produced only some of its cards is not "complete" — the
+      // old rule reported complete whenever a single item succeeded, so a
+      // half-failing nightly showed green on Settings → System status.
+      const status = failed === 0 ? "complete" : succeeded === 0 ? "failed" : "partial";
+
       await finishJobRun(run.id, {
-        status: failed > 0 && succeeded === 0 ? "failed" : "complete",
-        metadata: { batchId: meta.batchId, succeeded, failed },
-        ...(failed > 0 && succeeded === 0 ? { errorMessage: "all batch items failed" } : {}),
+        status,
+        metadata: { batchId: meta.batchId, succeeded, failed, items },
+        ...(failed > 0
+          ? {
+              errorMessage: items
+                .filter((i) => i.outcome !== "ok")
+                .map((i) => `${i.view}: ${i.outcome}${i.detail ? ` (${i.detail})` : ""}`)
+                .join(" | "),
+            }
+          : {}),
       });
     } catch (err) {
       console.error(`[nightly] polling batch ${meta.batchId} failed:`, err);

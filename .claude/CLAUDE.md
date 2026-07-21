@@ -15,7 +15,26 @@
 
 **Phase: FEATURE-COMPLETE against the audit punch list; everything statically verified, a growing queue awaiting one device session.**
 
-**PUSH-STATE:** `origin/main` = `b394bd8` (pushed and verified this session; remote confirmed to carry **no `.db` files**). **2 commits are LOCAL-ONLY and unpushed:** `cd8cf06` (transaction splits schema/API/budget math) and `a1d5050` (split editor UI + reports/LLM split-awareness). Push when the user OKs.
+**PUSH-STATE (corrected 2026-07-20 late via `git ls-remote`): `origin/main` = `0920ec2` — everything through the envelope-reallocation commit is PUSHED.** The earlier line here claiming `b394bd8` with 2 local-only commits was stale. Remote carries no `.db`.
+
+**⚠ UNCOMMITTED WORK IN THE TREE (2026-07-20, nightly-batch repair) — not committed, not pushed:** `backend/lib/llm/parse-cards.ts` (+ its test), `backend/lib/jobs/nightly.ts`, `backend/lib/jobs/job-runs.ts`, `backend/lib/llm/advisory.ts`, `backend/db/schema.ts`, `frontend/app/{developer,system-status}.tsx`, `.claude/wayfinder/build-reminders.md`. See the NIGHTLY BATCH block below.
+
+## ⇒ NIGHTLY BATCH WAS SILENTLY HALF-BROKEN — FIXED 2026-07-20 (uncommitted)
+
+`job_runs` showed `nightly_batch` failing 3× then "complete" — but the "complete" run was **`succeeded:1, failed:1`**. Two distinct bugs, both root-caused against the **real stored batches** (Batch API retains results 29 days — `beta.messages.batches.results(id)` replays them, which is how this was diagnosed rather than guessed):
+
+1. **Markdown fences.** Every failing item had `result.type === "succeeded"` at the API level — the failures were our own `JSON.parse`. The model wraps cards in ` ```json … ``` ` **despite `AUTO_CARD_INSTRUCTION` explicitly saying "no markdown fences"** — proof that a prompt instruction is not a parsing contract. Fixed in the new pure `lib/llm/parse-cards.ts`, shared by the batch path *and* `advisory.ts` (which had the identical bare `JSON.parse` — same defect, two call sites).
+2. **`max_tokens` truncation.** `MAX_OUTPUT_TOKENS` was 1500; the budget item spent **exactly 1500** output tokens on a `server_tool_use` (web_search) block and ended `stop_reason:"max_tokens"` with **zero text**. Server-tool blocks draw on the same output budget. The portfolio item used 421 and finished because it never searched — which is precisely why it was deterministically 1-of-2. Raised to 16000 in both paths (batch items have no HTTP timeout to stay under).
+
+**The status rule was the reason nobody noticed:** `failed > 0 && succeeded === 0 ? "failed" : "complete"` reported **green whenever a single item succeeded**. Now `failed === 0 ? complete : succeeded === 0 ? failed : "partial"`, with a new **`partial`** status threaded through `JobType`, the schema comment, and **both** frontend readers — `developer.tsx` would otherwise have coloured an unknown status with the *running* colour. (Audit the readers, not just the writer.)
+
+`job_runs.metadata` now carries per-item `{view, outcome, detail}` including `stop_reason`, so a truncation is distinguishable from unparseable output. Previously only `result.type` went to `console.error` and nothing reached disk — there was nothing to diagnose from.
+
+**Verification (real, not assumed):** 11 new tests in `parse-cards.test.ts` built from the actual failing payloads; suite **mutation-proven able to fail** (disabling fence-stripping → 4 failures; dropping the cards-array guard → 2). Replaying both real batches through the new logic: fenced portfolio now yields **4 cards**, budget correctly reports `stop_reason=max_tokens; model returned no text`, and **both batches flip `complete` → `partial`**. The raised ceiling was then proven with a live `generateCards(budget)` call against **`test.db`** — **5 cards in 63s**, the same view that used to truncate. Full suite **126 passing** (was 115), backend + frontend `tsc` clean.
+
+Also closed: **`build-reminders.md` item 1 (`encryptOAuthTokens`) — RESOLVED, not applicable.** Verified against code and DB: `lib/auth.ts` has only `emailAndPassword` + `expo()` (no `socialProviders`), and the `account` table holds only `provider_id:"credential"`. Better Auth never obtains an OAuth token here; all four third-party tokens (Google, Excel/MSAL, Plaid, SnapTrade) go through the app's own `lib/crypto.ts` AES layer. Keep the manual layer; re-open only if a social provider is ever added.
+
+**Note:** run the suite as `npm test` from the repo root or `npx vitest run` from `backend/`. A bare `npx vitest run` at the repo root fails to resolve the `@/` alias in 2 files — pre-existing, confirmed on a clean tree, not a regression.
 
 **A CONTRACT AUDIT (every backend route vs every frontend call site) found the docs were undercounting open work — trust code over the status text below.** It surfaced the single biggest defect in the project:
 

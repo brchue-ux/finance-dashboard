@@ -7,8 +7,13 @@ import { streamText, generateText, stepCountIs } from "ai";
 import { SYSTEM_PROMPT, AUTO_CARD_INSTRUCTION } from "./prompts";
 import { assembleBudgetContext, assemblePortfolioContext } from "./context";
 import { anthropic, assembleTools } from "./tools";
+import { parseCards } from "./parse-cards";
 
 const MODEL = "claude-sonnet-4-6"; // change here to upgrade
+
+// Keep in step with lib/jobs/nightly.ts — see the note there on server tools
+// consuming the output budget.
+const MAX_OUTPUT_TOKENS = 16000;
 
 // Tool loop ceiling per call: enough for a few indicator lookups + searches
 // around the actual answer, low enough to bound cost and latency.
@@ -32,13 +37,14 @@ export async function generateCards(userId: string, view: CardView) {
     model: anthropic(MODEL),
     system: SYSTEM_PROMPT + context + systemSuffix,
     prompt: AUTO_CARD_INSTRUCTION,
-    maxOutputTokens: 1500,
+    // Matches the batch path: tool calls draw on the same output budget, and
+    // 1500 was low enough for a real request to exhaust it before any text.
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
     tools,
     stopWhen: stepCountIs(MAX_STEPS),
   });
 
-  const parsed = JSON.parse(text) as { cards: unknown[] };
-  return parsed.cards;
+  return parseCards(text);
 }
 
 /**

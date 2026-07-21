@@ -416,7 +416,7 @@ export const jobRuns = sqliteTable(
     jobType: text("job_type").notNull(), // "plaid_sync" | "snaptrade_sync" | "alert_poll" | "nightly_batch"
     // | "import_csv" | "import_google_sheets" | "import_excel"
     // | "tradingview_webhook" | "graph_subscription_renewal" | "recategorize"
-    status: text("status").notNull(), // "running" | "complete" | "failed"
+    status: text("status").notNull(), // "running" | "complete" | "partial" | "failed"
     startedAt: integer("started_at").notNull(),
     finishedAt: integer("finished_at"),
     errorMessage: text("error_message"),

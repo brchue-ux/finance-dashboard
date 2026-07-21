@@ -103,7 +103,9 @@ function JobCard({ job }: { job: JobRun }) {
       ? COLORS.success
       : job.status === "failed"
         ? COLORS.danger
-        : COLORS.brandPurple;
+        : job.status === "partial"
+          ? COLORS.warning
+          : COLORS.brandPurple;
 
   const hasDetail = Boolean(job.metadata) || Boolean(job.errorMessage);
 

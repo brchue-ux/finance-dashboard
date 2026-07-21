@@ -6,11 +6,18 @@ Items in this file were identified during post-completion analysis but deferred 
 
 ## AT BUILD TIME — Must be decided before shipping the feature
 
-### 1. Better Auth `encryptOAuthTokens` — Make the call, don't defer again
+### 1. Better Auth `encryptOAuthTokens` — RESOLVED 2026-07-20: not applicable, keep the manual AES layer
 **Phase:** Auth setup (first backend sprint)
-**Context:** Better Auth v1.5 introduced `encryptOAuthTokens: true` which encrypts OAuth tokens before DB storage natively. The spec currently mandates manual AES-256-GCM for all third-party tokens. These overlap.
-**Decision to make:** Does `encryptOAuthTokens: true` handle the Google OAuth import tokens? If yes, remove the custom encryption path for Google tokens — manual AES-256 is then only needed for Plaid `access_token` and SnapTrade `auth_token`, which Better Auth does not manage. If no, document why and keep the full manual layer.
-**Do not ship auth without making this explicit.** Leaving both in place silently is a maintenance liability.
+**Context:** Better Auth v1.5 introduced `encryptOAuthTokens: true` which encrypts OAuth tokens before DB storage natively. The spec mandates manual AES-256-GCM for all third-party tokens. The concern was that these overlap.
+
+**Decision: they do not overlap. `encryptOAuthTokens` has nothing to encrypt in this app — do not set it.** The setting only governs tokens Better Auth itself obtains and stores via its own OAuth/social-provider layer, and this app never uses that layer.
+
+Verified against the running code and DB on 2026-07-20, not assumed:
+- `lib/auth.ts` configures **only** `emailAndPassword` plus the `expo()` plugin. There is no `socialProviders` block, so Better Auth performs no OAuth flow.
+- The Better Auth `account` table contains only `provider_id: "credential"` — no OAuth account rows exist.
+- All four third-party tokens are obtained by this app's own routes and encrypted through `lib/crypto.ts`: Google Sheets (`lib/import/google.ts`) and Microsoft Graph/Excel (`lib/import/excel.ts`) into `spreadsheet_connections`, Plaid (`app/api/plaid/hosted-complete`), and SnapTrade (`app/api/snaptrade/connect`).
+
+**Consequence:** the manual AES-256-GCM path stays as the single encryption mechanism for third-party credentials. There is no second, silent mechanism — which was the maintenance liability this item existed to prevent. Re-open only if Better Auth `socialProviders` is ever added (e.g. "sign in with Google"), at which point the tokens *it* stores would be a genuinely separate set from the import tokens above.
 
 ### 2. TradingView paid plan onboarding gate — Build the gate, not just a note
 **Phase:** Alerts tab + Settings → Connected Accounts
