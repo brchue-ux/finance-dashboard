@@ -110,3 +110,34 @@ export interface LLMCard {
   envelope_to?: string;
   amount?: number;
 }
+
+export interface ReallocationApplied {
+  ok: true;
+  year: number;
+  month: number;
+  amount: number;
+  from: { envelopeId: string; name: string; before: number; after: number };
+  to: { envelopeId: string; name: string; before: number; after: number };
+}
+
+/**
+ * Applies an LLM action card's proposed envelope reallocation for one month.
+ * The backend re-resolves the card's envelope names against real envelopes, so
+ * a stale or hallucinated card fails with a message rather than writing.
+ */
+export function useApplyReallocation(year: number, month: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (card: LLMCard) =>
+      api.post<ReallocationApplied>("/api/budget/allocations/reallocate", {
+        year,
+        month,
+        envelope_from: card.envelope_from,
+        envelope_to: card.envelope_to,
+        amount: card.amount,
+      }),
+    // Allocations change every envelope's remaining/overBudget, so the whole
+    // budget query is refetched rather than patched.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["budget"] }),
+  });
+}

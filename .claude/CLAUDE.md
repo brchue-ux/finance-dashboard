@@ -8,7 +8,7 @@
 <!-- ▛▀▀ CURRENT STATE — READ THIS FIRST, IT IS THE AUTHORITATIVE TRUTH ▀▀▜ -->
 <!-- Everything BELOW this block is historical layering kept for context.    -->
 <!-- If this block and anything below disagree, THIS BLOCK WINS.             -->
-<!-- Last updated: 2026-07-20 late (contract audit closed; budget envelopes + categorization fixed; 92-test Vitest suite; transaction splits end-to-end). -->
+<!-- Last updated: 2026-07-20 late (contract audit closed; budget envelopes + categorization fixed; 115-test Vitest suite; transaction splits end-to-end; envelope reallocation write path — last TODO in the codebase closed). -->
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 
 ## ⇒ START HERE — Finance Dashboard current state (2026-07-20, late session)
@@ -25,7 +25,15 @@
 
 **Built this session (all 9 audit items + splits):** notable-transaction cards on Budget; envelope CRUD + `/manage-envelopes`; unconfigured-vs-overBudget state; Settings connection badge; System status + Developer screens; Import UI (`/import`, CSV/Google/Excel); TradingView webhook screen + plan notice (closes the `build-reminders.md` #2 violation); chained connect wizard (`?mode=single` for "+ Add account"); removed dead `/api/plaid/exchange`; **transaction splits** (schema, API, budget math, Reports, LLM context, editor UI).
 
-**⚠ UNEXERCISED UI — worth ONE device session covering all of it at once:** split editor (remainder arithmetic, envelope picker, modal), connect-wizard auto-advance, document picker (CSV import), Google/Excel OAuth handoffs, and the Holding Detail chart's visual render. All are tsc-clean and bundle-clean (5.32 MB) but none have had a real tap.
+**ENVELOPE REALLOCATION (added 2026-07-20 late) — the last `TODO` in the codebase is now closed; `grep -rn TODO` over `backend/{lib,app}` and `frontend/{app,components,hooks}` returns nothing.**
+Approving an LLM action card used to `console.log` — a visible lie, since `envelope_allocations` was read by `/api/budget` and `lib/llm/context.ts` from day one but **written by nothing**, so per-month overrides could not exist.
+- `lib/budget/reallocate.ts` (pure, tested) + `POST /api/budget/allocations/reallocate` — the only write path into the table. Both sides upsert in one `db.transaction()`; the existing `uq_envelope_year_month` index makes it idempotent.
+- **`currentAllocation()` is the rule everything must use:** a month's budget is its allocation-row override *if a row exists*, else the standing `monthlyTarget`. Written `override ? override.allocated : target`, **not** `override?.allocated || target` — a deliberate $0 month must not silently fall back to the target. There's a test for exactly this.
+- Card `envelope_from`/`envelope_to` are **model-authored names, not ids** — resolved case/whitespace-insensitively against the user's *active* envelopes, and rejected with a UI-showable message if they don't resolve. Overdraw is rejected, never clamped (clamping would move less than the approved amount and break conservation). The card only disappears once the write succeeds.
+- Verified live on `test.db`: valid move, hallucinated envelope (400), overdraw (400), self-move across case (400), **a second move on the same pair compounding off 250 not 400**, and 401 unauthenticated. Total budgeted held at 2320 throughout; DB showed 2 allocation rows and zero duplicate `(envelope, year, month)` groups. Tests were mutation-checked twice (loosened negative guard → overdraw test fails; `||` fallback → zero-override test fails).
+- **Defect this activated in `lib/llm/context.ts`:** it passed raw allocation rows keyed by `envelopeId` UUID while the `envelopes` payload carried only `name` — **the model could not join them**, and nothing said allocations override `monthlyTarget`. Inert while the table was permanently empty; wrong the instant it became writable. Replaced with a per-envelope `budgetedThisMonth` + a stated `envelopeConvention`; `prompts.ts` now tells the model to copy envelope names exactly and cap `amount` at `budgetedThisMonth`. **This was a decision seam, not a component seam — both halves were individually correct.**
+
+**⚠ UNEXERCISED UI — worth ONE device session covering all of it at once:** split editor (remainder arithmetic, envelope picker, modal), connect-wizard auto-advance, document picker (CSV import), Google/Excel OAuth handoffs, the Holding Detail chart's visual render, and the LLM action-card Approve flow (busy state, per-card error text, flash confirmation — the API beneath it is verified, the taps are not). All are tsc-clean and bundle-clean (5.32 MB) but none have had a real tap.
 
 **Real data status:** `local.db` holds 1,762 real transactions, **0 splits**, and 7 envelopes with **$0 targets** (deliberately — the user does not want to set real budgets yet; the UI now renders that as "unconfigured" rather than a wall of "over budget"). **999 transactions remain uncategorized ($72.7k)** pending envelope decisions only the user can make — dominated by `WAL-MART SUPERCENTER` (171 txns, $17.5k, genuinely ambiguous groceries-vs-shopping).
 
@@ -90,11 +98,12 @@
 **FRONTEND STATUS (updated 2026-07-20 — see the authoritative FRONTEND-FEATURES block at the top):** DONE + committed: auth client slice, Alerts (+ Manage Alerts + unified-feed re-typing), Banks tab (+ per-account history), Reports, Holding Detail (chart + RSI/MACD + web-direct render), account-connection wizard (Plaid Hosted Link + SnapTrade — VERIFIED on-device, un-stubs Banks "+ Add account"). The former FOLLOW-UPS (RSI/MACD, web-direct chart render) are now BUILT (task #7, pending the user's visual check). Remaining open ideas (not started, not blocking): daily-candle range selector on Holding Detail; a same-institution Plaid dedup guard (needs storing institution_id).
 
 **AUTOMATED TESTS (added 2026-07-20) — `npm test` from the repo root, or `npx vitest run` in `backend/`.**
-Vitest 3.2.7, config at `backend/vitest.config.ts`. **71 tests, all passing.** Scope is deliberately pure logic only — anything touching the DB/Plaid/Anthropic is verified against the running server and `test.db` instead.
+Vitest 3.2.7, config at `backend/vitest.config.ts`. **115 tests, all passing.** Scope is deliberately pure logic only — anything touching the DB/Plaid/Anthropic is verified against the running server and `test.db` instead.
 - `lib/categorization.test.ts` (26) — every case is a real bug or real transaction description. Includes the four shipped bugs (`A&W`/`A & W`, `UBEREATS`, `STEAMGAMES`, `TACO BELL`) and regression guards that `BELL` must not match `BELLIES`/`BELLAS`.
 - `lib/budget/summarize.test.ts` (18) — the money math: unconfigured-vs-overBudget, the exactly-at-target boundary, allocation-overrides-target, notable threshold/cap/ordering.
 - `lib/import/{csv,normalize}.test.ts` (16) — RFC-4180 edge cases; sign convention, `negateAmounts`, unparseable-row handling.
 - `lib/alerts/severity.test.ts` (11) — both severity paths.
+- `lib/budget/reallocate.test.ts` (23) — envelope reallocation: conservation of total budgeted, override-vs-standing-target base, hallucinated/inactive envelope names, overdraw, self-move, the zero-override case.
 - **`/api/budget`'s math now lives in `lib/budget/summarize.ts`** (pure, tested) rather than inline in the route. The extraction was verified behaviour-preserving by diffing the live endpoint response before/after — byte-identical.
 - The suite was verified to *fail*: reverting the matcher to its pre-fix version fails exactly 3 tests. A green suite that can't fail proves nothing.
 - Note: some pure helpers sit in modules that also import `db/index.ts`, which builds a libsql client at import time — hence `env.DATABASE_URL=file::memory:` in the vitest config. No test issues a query. That coupling is a design smell worth unpicking.

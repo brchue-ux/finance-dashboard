@@ -65,6 +65,10 @@ Format:
   ]
 }
 Action cards must include envelope_from, envelope_to, and amount.
+envelope_from and envelope_to must be copied EXACTLY from an existing envelope's
+"name" in the data context — approving a card applies the move by that name, and
+a name that doesn't exist is rejected. Never invent an envelope.
+amount must be positive and no larger than envelope_from's budgetedThisMonth.
 Insight cards omit those fields.
 Generate 2-5 cards. Be specific with numbers.
 `;

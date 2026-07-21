@@ -9,6 +9,12 @@ interface LLMCardsProps {
   onReanalyze: () => void;
   onApproveAction?: (card: LLMCard) => void;
   onDismissAction?: (card: LLMCard) => void;
+  /** Title of the card whose reallocation is currently being applied. */
+  busyTitle?: string | null;
+  /** Per-card failure text, keyed by card title — e.g. a hallucinated envelope. */
+  errors?: Record<string, string>;
+  /** Confirmation of the last applied reallocation, shown above the cards. */
+  flash?: string | null;
 }
 
 function timeAgo(ts: number): string {
@@ -26,6 +32,9 @@ export function LLMCards({
   onReanalyze,
   onApproveAction,
   onDismissAction,
+  busyTitle,
+  errors,
+  flash,
 }: LLMCardsProps) {
   return (
     <View>
@@ -43,11 +52,28 @@ export function LLMCards({
         </Pressable>
       </View>
 
+      {flash && (
+        <View
+          style={{
+            backgroundColor: COLORS.insightBg,
+            borderWidth: 1,
+            borderColor: COLORS.success,
+            borderRadius: 10,
+            padding: 10,
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ color: COLORS.success, fontSize: 13 }}>{flash}</Text>
+        </View>
+      )}
+
       {/* Cards */}
       {cards.map((card, i) => (
         <LLMCardView
           key={i}
           card={card}
+          busy={busyTitle === card.title}
+          error={errors?.[card.title]}
           onApprove={() => onApproveAction?.(card)}
           onDismiss={() => onDismissAction?.(card)}
         />
@@ -58,14 +84,25 @@ export function LLMCards({
 
 function LLMCardView({
   card,
+  busy,
+  error,
   onApprove,
   onDismiss,
 }: {
   card: LLMCard;
+  busy: boolean;
+  error?: string;
   onApprove: () => void;
   onDismiss: () => void;
 }) {
-  const isAction = card.type === "action";
+  // An action card without a resolvable move is an insight with buttons that
+  // can't do anything, so it renders as an insight instead of offering Approve.
+  const isAction =
+    card.type === "action" &&
+    !!card.envelope_from &&
+    !!card.envelope_to &&
+    Number.isFinite(card.amount) &&
+    (card.amount ?? 0) > 0;
   const bgColor = isAction ? COLORS.actionBg : COLORS.insightBg;
   const borderColor = isAction ? COLORS.actionBorder : COLORS.insightBorder;
 
@@ -91,21 +128,40 @@ function LLMCardView({
       </Text>
 
       {isAction && (
-        <View style={{ flexDirection: "row", gap: 8 }}>
+        <>
+          {/* State the exact move the button performs — the body text is prose
+              and may not match the structured fields that are actually applied. */}
+          <Text style={{ color: COLORS.textPrimary, fontSize: 12, marginBottom: 8 }}>
+            Moves ${(card.amount ?? 0).toFixed(2)} from {card.envelope_from} to{" "}
+            {card.envelope_to} this month.
+          </Text>
+
+          {error && (
+            <Text style={{ color: COLORS.danger, fontSize: 12, marginBottom: 8 }}>{error}</Text>
+          )}
+
+          <View style={{ flexDirection: "row", gap: 8 }}>
           <Pressable
             onPress={onApprove}
+            disabled={busy}
             style={{
               flex: 1,
               backgroundColor: COLORS.brandBlue,
+              opacity: busy ? 0.6 : 1,
               borderRadius: 8,
               paddingVertical: 8,
               alignItems: "center",
             }}
           >
-            <Text style={{ color: "#fff", fontWeight: "600", fontSize: 13 }}>Approve</Text>
+            {busy ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={{ color: "#fff", fontWeight: "600", fontSize: 13 }}>Approve</Text>
+            )}
           </Pressable>
           <Pressable
             onPress={onDismiss}
+            disabled={busy}
             style={{
               flex: 1,
               backgroundColor: COLORS.glassBg,
@@ -118,7 +174,8 @@ function LLMCardView({
           >
             <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>Dismiss</Text>
           </Pressable>
-        </View>
+          </View>
+        </>
       )}
     </View>
   );

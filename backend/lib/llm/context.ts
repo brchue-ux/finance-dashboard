@@ -17,6 +17,7 @@ import {
 } from "@/db/schema";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { attributeSpend, type SplitRow } from "@/lib/budget/summarize";
+import { currentAllocation } from "@/lib/budget/reallocate";
 
 const ROLLUP_THRESHOLD = 5_000; // named constant per spec §8
 
@@ -78,12 +79,24 @@ export async function assembleBudgetContext(userId: string): Promise<string> {
     currentDate: now.toISOString(),
     amountConvention: "Transaction amounts are signed: negative = money out (spending), positive = money in (income/refund). The 'direction' field on each transaction states this explicitly.",
     bankConnections: bankConns,
+    // Each envelope carries its *effective* budget for the current month:
+    // monthlyTarget unless an allocation row overrides it. Raw allocation rows
+    // were previously passed alongside, but they key on envelope UUIDs that
+    // never appear in this payload, so the model had no way to join them and
+    // would reason from a stale monthlyTarget after any reallocation.
     envelopes: envelopes.map((e) => ({
       name: e.name,
       monthlyTarget: e.monthlyTarget,
+      budgetedThisMonth: currentAllocation(
+        e,
+        allocations.filter(
+          (a) => a.year === now.getFullYear() && a.month === now.getMonth() + 1
+        )
+      ),
       sortOrder: e.sortOrder,
     })),
-    allocations,
+    envelopeConvention:
+      "'budgetedThisMonth' is the amount actually budgeted for the current month and is what reallocations move; 'monthlyTarget' is the standing default it started from. Reason about the current month with budgetedThisMonth.",
     // Label each row's direction so the model never has to infer it from the sign
     splitConvention:
       "A transaction with a non-empty 'splits' array is divided across several envelopes. Its parts REPLACE its own 'category' — count the splits, never both, or you will double-count the spend.",

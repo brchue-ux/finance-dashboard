@@ -27,6 +27,8 @@ import {
   useSyncBudget,
   useLLMCards,
   useForceReanalyze,
+  useApplyReallocation,
+  type LLMCard,
 } from "@/hooks/useBudget";
 
 function fmt(n: number) {
@@ -44,6 +46,36 @@ export default function BudgetScreen() {
   const syncMutation = useSyncBudget();
   const llmQuery = useLLMCards("budget");
   const reanalyze = useForceReanalyze("budget");
+  const applyReallocation = useApplyReallocation(year, month);
+
+  // Card resolution lives here, not in the cached query: approving or
+  // dismissing shouldn't force a re-analysis, and the LLM cache is shared.
+  const [resolvedTitles, setResolvedTitles] = useState<string[]>([]);
+  const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
+  const [flash, setFlash] = useState<string | null>(null);
+
+  const visibleCards = (llmQuery.data?.cards ?? []).filter(
+    (c) => !resolvedTitles.includes(c.title)
+  );
+
+  async function onApprove(card: LLMCard) {
+    setCardErrors((e) => ({ ...e, [card.title]: "" }));
+    try {
+      const res = await applyReallocation.mutateAsync(card);
+      // Only hide the card once the write succeeded — hiding on tap would make
+      // a rejected reallocation look applied.
+      setResolvedTitles((t) => [...t, card.title]);
+      setFlash(
+        `Moved $${res.amount.toFixed(2)} from ${res.from.name} ($${res.from.after.toFixed(0)} left budgeted) to ${res.to.name} ($${res.to.after.toFixed(0)}).`
+      );
+      await refetch();
+    } catch (err) {
+      setCardErrors((e) => ({
+        ...e,
+        [card.title]: err instanceof Error ? err.message : "Couldn't apply that change.",
+      }));
+    }
+  }
 
   function prevMonth() {
     if (month === 1) { setYear(y => y - 1); setMonth(12); }
@@ -160,17 +192,21 @@ export default function BudgetScreen() {
         {/* LLM cards */}
         <View style={{ marginTop: 8, marginBottom: 20 }}>
           <LLMCards
-            cards={llmQuery.data?.cards ?? []}
+            cards={visibleCards}
             lastAnalyzedAt={llmQuery.data?.lastAnalyzedAt ?? null}
             isLoading={llmQuery.isLoading || reanalyze.isPending}
-            onReanalyze={() => reanalyze.mutate()}
-            onApproveAction={(card) => {
-              // TODO: apply envelope reallocation
-              console.log("Approve action:", card);
+            onReanalyze={() => {
+              // A fresh analysis supersedes every prior verdict.
+              setResolvedTitles([]);
+              setCardErrors({});
+              setFlash(null);
+              reanalyze.mutate();
             }}
-            onDismissAction={(card) => {
-              console.log("Dismiss action:", card);
-            }}
+            busyTitle={applyReallocation.isPending ? applyReallocation.variables?.title : null}
+            errors={cardErrors}
+            flash={flash}
+            onApproveAction={onApprove}
+            onDismissAction={(card) => setResolvedTitles((t) => [...t, card.title])}
           />
         </View>
 
