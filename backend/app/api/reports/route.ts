@@ -12,6 +12,7 @@ import { db } from "@/db";
 import { bankAccounts, bankBalanceSnapshots, portfolioSnapshots, transactions, transactionSplits } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { attributeSpend } from "@/lib/budget/summarize";
+import { withoutTransfers } from "@/lib/budget/transfers";
 
 export async function GET(req: NextRequest) {
   const authed = await requireUser(req);
@@ -40,6 +41,7 @@ export async function GET(req: NextRequest) {
         date: transactions.date,
         amount: transactions.amount,
         category: transactions.category,
+        transferSource: transactions.transferSource,
       })
       .from(transactions)
       .where(eq(transactions.userId, userId)),
@@ -101,11 +103,18 @@ export async function GET(req: NextRequest) {
   const cutoffMonth = cutoff.toISOString().slice(0, 7); // YYYY-MM
   const monthOf = (date: string) => date.slice(0, 7);
 
+  // Money moving between the user's own accounts is neither income nor an
+  // expense. Excluded here as well as in lib/budget/summarize.ts — this route
+  // computes its own cash-flow figures, so it would otherwise keep reporting
+  // credit-card payments as income while the Budget screen no longer did, and
+  // the two screens would disagree about the same month.
+  const txnsForFlow = withoutTransfers(txns);
+
   const trendMap = new Map<string, Map<string, number>>(); // month → category → spend
   const flowMap = new Map<string, { income: number; expenses: number }>();
   // Income vs expenses is a cash-flow view, so it stays on the parent amount —
   // splitting a purchase across envelopes doesn't change what left the account.
-  for (const t of txns) {
+  for (const t of txnsForFlow) {
     const m = monthOf(t.date);
     if (m < cutoffMonth) continue;
     const flow = flowMap.get(m) ?? { income: 0, expenses: 0 };
@@ -115,7 +124,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Category trends are per-envelope, so they follow the splits.
-  for (const a of attributeSpend(txns, splits)) {
+  for (const a of attributeSpend(txnsForFlow, splits)) {
     const m = monthOf(a.transaction.date);
     if (m < cutoffMonth) continue;
     if (a.amount >= 0) continue;

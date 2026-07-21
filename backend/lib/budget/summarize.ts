@@ -6,6 +6,7 @@
  * is plausible-looking rather than obviously broken, which is exactly why it
  * needs tests rather than eyeballing.
  */
+import { withoutTransfers } from "@/lib/budget/transfers";
 
 /** Envelope row as stored — categoryRules is still JSON text at this point. */
 export interface EnvelopeRow {
@@ -29,6 +30,9 @@ export interface TransactionRow {
   merchantName: string | null;
   amount: number;
   category: string | null;
+  /** Non-null means this row is a transfer between the user's own accounts and
+   *  is excluded from every figure here. See lib/budget/transfers.ts. */
+  transferSource?: string | null;
 }
 
 export interface SplitRow {
@@ -97,7 +101,7 @@ export function summarizeEnvelopes(
   // A per-month allocation overrides the envelope's standing target, which is
   // how reallocation works without rewriting the envelope itself.
   const allocationMap = new Map(allocations.map((a) => [a.envelopeId, a.allocated]));
-  const attributed = attributeSpend(monthTxns, splits);
+  const attributed = attributeSpend(withoutTransfers(monthTxns), splits);
 
   return envelopes.map((env) => {
     const allocated = allocationMap.get(env.id) ?? env.monthlyTarget;
@@ -155,7 +159,7 @@ export function computeNotableTransactions(
   // Measured per split, not per transaction: a $200 shop split 50/50 across two
   // envelopes is two ordinary charges, not one outsized one. Using the parent
   // total would flag it in both.
-  const attributed = attributeSpend(monthTxns, splits);
+  const attributed = attributeSpend(withoutTransfers(monthTxns), splits);
 
   return summaries
     .filter((env) => env.allocated > 0)
@@ -189,7 +193,12 @@ export function summarizeTotals(
   monthTxns: TransactionRow[],
   splits: SplitRow[] = []
 ) {
-  const attributed = attributeSpend(monthTxns, splits);
+  // Removed once, here, rather than subtracted from each total below: income,
+  // outflow, unattributed spend and `saved` all derive from these same rows, so
+  // one filter makes every figure correct by construction instead of by four
+  // separate edits that have to agree.
+  const spendable = withoutTransfers(monthTxns);
+  const attributed = attributeSpend(spendable, splits);
   const envelopeNames = new Set(summaries.map((e) => e.name));
 
   // Spend that landed in an envelope. Excludes anything the categorization
@@ -211,7 +220,7 @@ export function summarizeTotals(
     .reduce((s, a) => s + Math.abs(a.amount), 0);
 
   const totalAllocated = summaries.reduce((s, e) => s + e.allocated, 0);
-  const totalIncome = monthTxns.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+  const totalIncome = spendable.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
 
   return {
     totalSpent,
