@@ -9,24 +9,11 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
-import { transactions, transactionSplits } from "@/db/schema";
+import { transactionSplits } from "@/db/schema";
 import { validateSplits } from "@/lib/budget/splits";
-import { and, eq } from "drizzle-orm";
-
-async function ownedTransaction(req: NextRequest, id: string) {
-  const authed = await requireUser(req);
-  if ("response" in authed) return authed;
-
-  const [row] = await db
-    .select({ id: transactions.id, amount: transactions.amount })
-    .from(transactions)
-    .where(and(eq(transactions.id, id), eq(transactions.userId, authed.userId)));
-
-  if (!row) return { response: NextResponse.json({ error: "Not found" }, { status: 404 }) };
-  return { row, userId: authed.userId };
-}
+import { ownedTransaction } from "@/lib/transaction-access";
+import { eq } from "drizzle-orm";
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;

@@ -12,6 +12,7 @@ import { COLORS } from "@/constants/theme";
 import { TransactionFeed } from "@/components/budget/TransactionFeed";
 import { useAccountTransactions } from "@/hooks/useBanks";
 import { SplitEditor } from "@/components/budget/SplitEditor";
+import { CategoryPicker } from "@/components/budget/CategoryPicker";
 import type { Transaction } from "@/hooks/useBudget";
 
 export default function AccountTransactionsScreen() {
@@ -24,6 +25,7 @@ export default function AccountTransactionsScreen() {
   const PAGE = highlight ? 200 : 30;
   const { data, isLoading, isError } = useAccountTransactions(id ?? "", PAGE);
   const [splitting, setSplitting] = useState<Transaction | null>(null);
+  const [recategorizing, setRecategorizing] = useState<Transaction | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   // Tinting a row that is off-screen is invisible; scroll it into view. Offset
@@ -70,6 +72,7 @@ export default function AccountTransactionsScreen() {
               transactions={data!.transactions}
               highlightId={highlight}
               onSplit={setSplitting}
+              onRecategorize={setRecategorizing}
               limit={PAGE}
               onHighlightLayout={scrollToHighlight}
             />
@@ -110,6 +113,36 @@ export default function AccountTransactionsScreen() {
                 />
               )}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Category picker. Separate modal from the split editor because the two
+          are different edits: one reassigns the whole transaction, the other
+          divides it. */}
+      <Modal
+        visible={recategorizing !== null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setRecategorizing(null)}
+      >
+        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
+          <View
+            style={{
+              backgroundColor: COLORS.background,
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              maxHeight: "70%",
+            }}
+          >
+            {recategorizing && (
+              <CategoryPicker
+                transactionId={recategorizing.id}
+                description={recategorizing.merchantName ?? recategorizing.description}
+                currentCategory={recategorizing.category}
+                onDone={() => setRecategorizing(null)}
+              />
+            )}
           </View>
         </View>
       </Modal>

@@ -10,6 +10,7 @@ import {
   Pressable,
   RefreshControl,
   ActivityIndicator,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -20,6 +21,7 @@ import { EnvelopeCard } from "@/components/budget/EnvelopeCard";
 import { LLMCards } from "@/components/budget/LLMCards";
 import { NotableTransactions } from "@/components/budget/NotableTransactions";
 import { TransactionFeed } from "@/components/budget/TransactionFeed";
+import { CategoryPicker } from "@/components/budget/CategoryPicker";
 import { ConversationSheet } from "@/components/llm/ConversationSheet";
 import { COLORS } from "@/constants/theme";
 import {
@@ -29,6 +31,7 @@ import {
   useForceReanalyze,
   useApplyReallocation,
   type LLMCard,
+  type Transaction,
 } from "@/hooks/useBudget";
 
 function fmt(n: number) {
@@ -53,6 +56,7 @@ export default function BudgetScreen() {
   const [resolvedTitles, setResolvedTitles] = useState<string[]>([]);
   const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
   const [flash, setFlash] = useState<string | null>(null);
+  const [recategorizing, setRecategorizing] = useState<Transaction | null>(null);
 
   const visibleCards = (llmQuery.data?.cards ?? []).filter(
     (c) => !resolvedTitles.includes(c.title)
@@ -263,9 +267,38 @@ export default function BudgetScreen() {
 
         {/* Transaction feed */}
         {data?.transactions && (
-          <TransactionFeed transactions={data.transactions} />
+          <TransactionFeed transactions={data.transactions} onRecategorize={setRecategorizing} />
         )}
       </ScrollView>
+
+      {/* Category picker — the Budget screen is where a miscategorization is
+          most visible, since you are looking at the envelope it landed in. */}
+      <Modal
+        visible={recategorizing !== null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setRecategorizing(null)}
+      >
+        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
+          <View
+            style={{
+              backgroundColor: COLORS.background,
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              maxHeight: "70%",
+            }}
+          >
+            {recategorizing && (
+              <CategoryPicker
+                transactionId={recategorizing.id}
+                description={recategorizing.merchantName ?? recategorizing.description}
+                currentCategory={recategorizing.category}
+                onDone={() => setRecategorizing(null)}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <ConversationSheet
         visible={chatOpen}

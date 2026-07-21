@@ -12,6 +12,13 @@ interface TransactionFeedProps {
    * Budget feed, where the same row appears without its account.
    */
   onSplit?: (txn: Transaction) => void;
+  /**
+   * When provided, the category becomes its own tappable chip. Kept separate
+   * from the row press so the split editor keeps the whole-row target it was
+   * verified with on-device — tapping the category to change the category is
+   * the direct mapping, and it needs no hidden gesture to discover.
+   */
+  onRecategorize?: (txn: Transaction) => void;
   /** Max rows to render. Must not be smaller than the caller's fetch limit,
    *  or a highlighted row can be fetched but never drawn. */
   limit?: number;
@@ -30,6 +37,7 @@ export function TransactionFeed({
   transactions,
   highlightId,
   onSplit,
+  onRecategorize,
   limit = 30,
   onHighlightLayout,
 }: TransactionFeedProps) {
@@ -72,10 +80,41 @@ export function TransactionFeed({
             <Text style={{ color: COLORS.textPrimary, fontSize: 14 }} numberOfLines={1}>
               {txn.merchantName ?? txn.description}
             </Text>
-            <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
-              {txn.category ?? "uncategorized"} · {txn.date}
-              {txn.pending ? " · Pending" : ""}
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
+              {onRecategorize ? (
+                // Nested Pressable: RN gives the touch to the innermost
+                // responder, so this does not also open the split editor.
+                // Padded because the bare text is a ~12px-tall target.
+                <Pressable
+                  onPress={() => onRecategorize(txn)}
+                  hitSlop={8}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingVertical: 3,
+                    paddingHorizontal: 7,
+                    marginVertical: 2,
+                    marginRight: 4,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: COLORS.glassBorder,
+                  }}
+                >
+                  <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
+                    {txn.category ?? "uncategorized"}
+                  </Text>
+                  <Text style={{ color: COLORS.textMuted, fontSize: 9, marginLeft: 4 }}>▾</Text>
+                </Pressable>
+              ) : (
+                <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
+                  {txn.category ?? "uncategorized"}
+                </Text>
+              )}
+              <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
+                · {txn.date}
+                {txn.pending ? " · Pending" : ""}
+              </Text>
+            </View>
           </View>
           <Text
             style={{
@@ -94,9 +133,13 @@ export function TransactionFeed({
           )}
         </Pressable>
       ))}
-      {onSplit && transactions.length > 0 && (
+      {transactions.length > 0 && (onSplit || onRecategorize) && (
         <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 10 }}>
-          Tap a transaction to split it across envelopes.
+          {onSplit && onRecategorize
+            ? "Tap a category to move it to another envelope, or a transaction to split it."
+            : onSplit
+              ? "Tap a transaction to split it across envelopes."
+              : "Tap a category to move it to another envelope."}
         </Text>
       )}
     </View>

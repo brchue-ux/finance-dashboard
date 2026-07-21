@@ -12,6 +12,14 @@
  * LLM budget advice quality.
  */
 
+/**
+ * The category a transaction carries when no envelope claims it. Exported
+ * because it is a value other modules must agree on exactly — a manual
+ * assignment can clear a category back to it, and the budget totals treat it
+ * as unattributed spend rather than as an envelope.
+ */
+export const UNCATEGORIZED = "uncategorized";
+
 export interface Envelope {
   name: string;
   categoryRules: string[]; // array of keyword/merchant strings
@@ -121,7 +129,7 @@ export function categorize(
     }
   }
 
-  return best?.name ?? "uncategorized";
+  return best?.name ?? UNCATEGORIZED;
 }
 
 /**
