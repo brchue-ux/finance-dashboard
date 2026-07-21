@@ -5,7 +5,7 @@
  * /api/budget). Newest first, paginated.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { bankAccounts, transactions } from "@/db/schema";
 import { and, desc, eq } from "drizzle-orm";
@@ -14,15 +14,15 @@ const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
   const { id: accountId } = await ctx.params;
 
   // Ownership check — never serve another user's account, and 404 an unknown id
   const [account] = await db
     .select({ id: bankAccounts.id, name: bankAccounts.name })
     .from(bankAccounts)
-    .where(and(eq(bankAccounts.id, accountId), eq(bankAccounts.userId, session.user.id)))
+    .where(and(eq(bankAccounts.id, accountId), eq(bankAccounts.userId, authed.userId)))
     .limit(1);
   if (!account) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const rows = await db
     .select()
     .from(transactions)
-    .where(and(eq(transactions.accountId, accountId), eq(transactions.userId, session.user.id)))
+    .where(and(eq(transactions.accountId, accountId), eq(transactions.userId, authed.userId)))
     .orderBy(desc(transactions.date), desc(transactions.createdAt))
     .limit(limit + 1)
     .offset(offset);

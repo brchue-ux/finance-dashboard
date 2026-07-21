@@ -7,7 +7,7 @@
  * removed — Hosted Link is the locked mechanism).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { plaidClient } from "@/lib/plaid";
 import { db } from "@/db";
 import { bankConnections } from "@/db/schema";
@@ -52,8 +52,8 @@ async function pollForItemAddResult(
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
   const parsed = bodySchema.safeParse(await req.json());
   if (!parsed.success) {
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
   const connectionId = uuidv4();
   await db.insert(bankConnections).values({
     id: connectionId,
-    userId: session.user.id,
+    userId: authed.userId,
     institutionName: resolvedInstitutionName,
     plaidItemId: item_id,
     plaidAccessToken: encrypt(access_token),
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
 
   await syncAccountsForConnection(
     connectionId,
-    session.user.id,
+    authed.userId,
     access_token,
     resolvedInstitutionName
   );

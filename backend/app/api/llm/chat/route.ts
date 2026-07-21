@@ -10,16 +10,14 @@
  * }
  */
 import { NextRequest } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { streamConversation, type CardView } from "@/lib/llm/advisory";
 
 const MAX_MESSAGES = 20; // 10 exchanges (user + assistant = 2 per exchange)
 
 export async function POST(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
-  }
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
   const { view, messages, alertContext } = (await req.json()) as {
     view: CardView;
@@ -31,7 +29,7 @@ export async function POST(req: NextRequest) {
   const cappedMessages = messages.slice(-MAX_MESSAGES);
 
   const result = await streamConversation({
-    userId: session.user.id,
+    userId: authed.userId,
     view,
     messages: cappedMessages,
     alertContext,

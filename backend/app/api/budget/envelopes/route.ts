@@ -12,19 +12,19 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { budgetEnvelopes } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
   const rows = await db
     .select()
     .from(budgetEnvelopes)
-    .where(eq(budgetEnvelopes.userId, session.user.id))
+    .where(eq(budgetEnvelopes.userId, authed.userId))
     .orderBy(asc(budgetEnvelopes.sortOrder));
 
   return NextResponse.json({
@@ -41,8 +41,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
   const body = await req.json().catch(() => null);
   const name = typeof body?.name === "string" ? body.name.trim() : "";
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
   const existing = await db
     .select({ name: budgetEnvelopes.name })
     .from(budgetEnvelopes)
-    .where(eq(budgetEnvelopes.userId, session.user.id));
+    .where(eq(budgetEnvelopes.userId, authed.userId));
   if (existing.some((e) => e.name.toLowerCase() === name.toLowerCase())) {
     return NextResponse.json(
       { error: `An envelope named "${name}" already exists` },
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
 
   const row = {
     id: randomUUID(),
-    userId: session.user.id,
+    userId: authed.userId,
     name,
     monthlyTarget,
     categoryRules: JSON.stringify(categoryRules),

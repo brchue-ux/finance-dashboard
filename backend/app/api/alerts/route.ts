@@ -5,7 +5,7 @@
  *                    not just holdings (index alerts like ^GSPC are first-class).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { alertFires, priceAlerts, tradingviewAlerts } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";
@@ -30,20 +30,20 @@ export interface UnifiedAlert {
 const FEED_LIMIT = 100;
 
 export async function GET(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
   const [fires, tvAlerts] = await Promise.all([
     db
       .select()
       .from(alertFires)
-      .where(eq(alertFires.userId, session.user.id))
+      .where(eq(alertFires.userId, authed.userId))
       .orderBy(desc(alertFires.firedAt))
       .limit(FEED_LIMIT),
     db
       .select()
       .from(tradingviewAlerts)
-      .where(eq(tradingviewAlerts.userId, session.user.id))
+      .where(eq(tradingviewAlerts.userId, authed.userId))
       .orderBy(desc(tradingviewAlerts.receivedAt))
       .limit(FEED_LIMIT),
   ]);
@@ -92,8 +92,8 @@ const createAlertSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
   const parsed = createAlertSchema.safeParse(await req.json());
   if (!parsed.success) {
@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
 
   await db.insert(priceAlerts).values({
     id,
-    userId: session.user.id,
+    userId: authed.userId,
     ticker: body.ticker,
     holdingId: body.holdingId ?? null,
     label: body.label ?? null,

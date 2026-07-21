@@ -3,7 +3,7 @@
  * Returns budget data for a given month: envelopes, allocations, transactions.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import {
   budgetEnvelopes,
@@ -20,10 +20,10 @@ import {
 } from "@/lib/budget/summarize";
 
 export async function GET(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
-  const userId = session.user.id;
+  const userId = authed.userId;
   const { searchParams } = new URL(req.url);
   const now = new Date();
   const year = parseInt(searchParams.get("year") ?? String(now.getFullYear()), 10);

@@ -4,12 +4,12 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { excelConsentUrl, excelConfigured } from "@/lib/import/excel";
 
 export async function GET(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
   if (!excelConfigured()) {
     return NextResponse.json({ error: "Microsoft OAuth not configured" }, { status: 503 });
   }

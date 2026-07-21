@@ -3,7 +3,7 @@
  * Returns current portfolio state: latest snapshot, holdings, recent transactions.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import {
   portfolioSnapshots,
@@ -14,10 +14,10 @@ import {
 import { eq, desc, gte } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
-  const userId = session.user.id;
+  const userId = authed.userId;
 
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);

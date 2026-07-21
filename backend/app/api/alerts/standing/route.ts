@@ -4,20 +4,20 @@
  * instructions, not events.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { priceAlerts } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";
 import { nativeConditionLabel } from "@/lib/alerts/severity";
 
 export async function GET(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
   const alerts = await db
     .select()
     .from(priceAlerts)
-    .where(eq(priceAlerts.userId, session.user.id))
+    .where(eq(priceAlerts.userId, authed.userId))
     .orderBy(desc(priceAlerts.createdAt));
 
   return NextResponse.json({

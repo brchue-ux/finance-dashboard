@@ -3,7 +3,7 @@
  * CSRF state cookie, exchanges the code, and persists the MSAL token cache.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { exchangeExcelCode } from "@/lib/import/excel";
 
 function closePage(message: string): NextResponse {
@@ -14,8 +14,8 @@ function closePage(message: string): NextResponse {
 }
 
 export async function GET(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid OAuth state" }, { status: 400 });
   }
 
-  await exchangeExcelCode(session.user.id, code);
+  await exchangeExcelCode(authed.userId, code);
 
   const res = closePage("Excel connected. You can close this window.");
   res.cookies.delete("ms_oauth_state");

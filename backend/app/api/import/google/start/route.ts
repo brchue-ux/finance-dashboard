@@ -5,12 +5,12 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { googleConsentUrl } from "@/lib/import/google";
 
 export async function GET(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
   if (!process.env.GOOGLE_OAUTH_CLIENT_ID || !process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
     return NextResponse.json({ error: "Google OAuth not configured" }, { status: 503 });

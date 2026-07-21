@@ -4,14 +4,14 @@
  * Thin wrapper over lib/sync/snaptrade (shared with the nightly 2am job).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { syncSnapTradeForUser } from "@/lib/sync/snaptrade";
 
 export async function POST(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
-  const result = await syncSnapTradeForUser(session.user.id);
+  const result = await syncSnapTradeForUser(authed.userId);
   if (result.skipped === "no_connection") {
     return NextResponse.json({ error: "No Wealthsimple connection" }, { status: 404 });
   }

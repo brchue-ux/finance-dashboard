@@ -5,7 +5,7 @@
  * closes the popup). The frontend replaces this with its own success handling.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { exchangeGoogleCode } from "@/lib/import/google";
 
 function closePage(message: string): NextResponse {
@@ -16,8 +16,8 @@ function closePage(message: string): NextResponse {
 }
 
 export async function GET(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid OAuth state" }, { status: 400 });
   }
 
-  await exchangeGoogleCode(session.user.id, code);
+  await exchangeGoogleCode(authed.userId, code);
 
   const res = closePage("Google Sheets connected. You can close this window.");
   res.cookies.delete("g_oauth_state");

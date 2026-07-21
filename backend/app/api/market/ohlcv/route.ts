@@ -6,7 +6,7 @@
  * Yahoo Finance first, Alpha Vantage fallback (automatic).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { ohlcvCache } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -18,8 +18,8 @@ const VALID_RANGES: Range[] = ["1mo", "3mo", "6mo", "1y", "2y", "5y"];
 const CACHE_TTL_SECONDS = 24 * 60 * 60;
 
 export async function GET(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
   const { searchParams } = new URL(req.url);
   const ticker = searchParams.get("ticker")?.toUpperCase();

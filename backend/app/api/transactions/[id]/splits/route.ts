@@ -9,31 +9,29 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { transactions, transactionSplits } from "@/db/schema";
 import { validateSplits } from "@/lib/budget/splits";
 import { and, eq } from "drizzle-orm";
 
 async function ownedTransaction(req: NextRequest, id: string) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return { error: "Unauthorized" as const, status: 401 };
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed;
 
   const [row] = await db
     .select({ id: transactions.id, amount: transactions.amount })
     .from(transactions)
-    .where(and(eq(transactions.id, id), eq(transactions.userId, session.user.id)));
+    .where(and(eq(transactions.id, id), eq(transactions.userId, authed.userId)));
 
-  if (!row) return { error: "Not found" as const, status: 404 };
-  return { row, userId: session.user.id };
+  if (!row) return { response: NextResponse.json({ error: "Not found" }, { status: 404 }) };
+  return { row, userId: authed.userId };
 }
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const found = await ownedTransaction(req, id);
-  if ("error" in found) {
-    return NextResponse.json({ error: found.error }, { status: found.status });
-  }
+  if ("response" in found) return found.response;
 
   const rows = await db
     .select()
@@ -54,9 +52,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const found = await ownedTransaction(req, id);
-  if ("error" in found) {
-    return NextResponse.json({ error: found.error }, { status: found.status });
-  }
+  if ("response" in found) return found.response;
 
   const body = await req.json().catch(() => null);
   const validation = validateSplits(found.row.amount, body?.splits);
@@ -92,9 +88,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const found = await ownedTransaction(req, id);
-  if ("error" in found) {
-    return NextResponse.json({ error: found.error }, { status: found.status });
-  }
+  if ("response" in found) return found.response;
 
   await db.delete(transactionSplits).where(eq(transactionSplits.transactionId, id));
 

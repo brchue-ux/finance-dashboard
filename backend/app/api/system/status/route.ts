@@ -4,16 +4,16 @@
  * nightly analysis, import history.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { bankConnections, wealthsimpleConnections, jobRuns } from "@/db/schema";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { inPollingWindow } from "@/lib/alerts/poller";
 
 export async function GET(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const userId = session.user.id;
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
+  const userId = authed.userId;
 
   const [banks, [ws], [lastPoll], [lastNightly], imports] = await Promise.all([
     db

@@ -4,7 +4,7 @@
  * tradingview_alerts.read_at — analyzed_at is a different fact).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { alertFires, tradingviewAlerts } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -13,8 +13,8 @@ import { z } from "zod";
 const bodySchema = z.object({ source: z.enum(["native", "tradingview"]) });
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
   const { id } = await ctx.params;
 
   const parsed = bodySchema.safeParse(await req.json());
@@ -28,11 +28,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       ? await db
           .update(alertFires)
           .set({ readAt: now })
-          .where(and(eq(alertFires.id, id), eq(alertFires.userId, session.user.id)))
+          .where(and(eq(alertFires.id, id), eq(alertFires.userId, authed.userId)))
       : await db
           .update(tradingviewAlerts)
           .set({ readAt: now })
-          .where(and(eq(tradingviewAlerts.id, id), eq(tradingviewAlerts.userId, session.user.id)));
+          .where(and(eq(tradingviewAlerts.id, id), eq(tradingviewAlerts.userId, authed.userId)));
 
   if (result.rowsAffected === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ ok: true });

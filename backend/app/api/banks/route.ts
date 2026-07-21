@@ -7,14 +7,14 @@
  * Investment accounts are not here (those live under /api/portfolio).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { bankAccounts, bankConnections } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
   // LEFT JOIN: manual accounts have connectionId = NULL and no connection row.
   const rows = await db
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
     })
     .from(bankAccounts)
     .leftJoin(bankConnections, eq(bankAccounts.connectionId, bankConnections.id))
-    .where(eq(bankAccounts.userId, session.user.id));
+    .where(eq(bankAccounts.userId, authed.userId));
 
   const accounts = rows.map((r) => ({
     ...r,

@@ -51,10 +51,28 @@ async function request<T>(
   }
 
   if (res.status === 401) {
-    // Only now decide it is real, and only sign out if the session is
-    // genuinely invalid. Previously ANY 401 from ANY endpoint called
-    // signOut(), so an expected 401 from an unconfigured integration
-    // (/api/import/google/start) logged the user out of the whole app.
+    // USER_NOT_FOUND means the server resolved our session but its subject no
+    // longer exists there — a deleted account, a restore from an older backup,
+    // or the server being pointed at a different database. Asking the local
+    // session is useless here: Better Auth's 30-day cookieCache keeps returning
+    // a valid-looking session for a user that is gone, so the client would
+    // conclude everything is fine and throw on every request forever with no
+    // way back to a login screen. Trust the server and sign out.
+    const code = await res
+      .clone()
+      .json()
+      .then((b) => b?.code as string | undefined)
+      .catch(() => undefined);
+
+    if (code === "USER_NOT_FOUND") {
+      await authClient.signOut();
+      throw new Error("Unauthorized");
+    }
+
+    // Otherwise only sign out if the session is genuinely invalid. Previously
+    // ANY 401 from ANY endpoint called signOut(), so an expected 401 from an
+    // unconfigured integration (/api/import/google/start) logged the user out
+    // of the whole app.
     const { data } = await authClient.getSession();
     if (!data?.session) await authClient.signOut();
     throw new Error("Unauthorized");

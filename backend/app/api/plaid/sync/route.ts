@@ -4,13 +4,13 @@
  * user. Thin wrapper over lib/sync/plaid (shared with the nightly 2am job).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { syncPlaidForUser } from "@/lib/sync/plaid";
 
 export async function POST(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
-  const result = await syncPlaidForUser(session.user.id);
+  const result = await syncPlaidForUser(authed.userId);
   return NextResponse.json({ ok: true, transactionsProcessed: result.transactionsProcessed });
 }

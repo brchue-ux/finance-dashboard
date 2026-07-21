@@ -13,7 +13,7 @@
  * }
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { spreadsheetConnections } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -35,8 +35,8 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
   const parsed = bodySchema.safeParse(await req.json());
   if (!parsed.success) {
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
   }
   const { spreadsheet, range, mapping, negateAmounts } = parsed.data;
 
-  const authorized = await googleClientForUser(session.user.id);
+  const authorized = await googleClientForUser(authed.userId);
   if (!authorized) {
     return NextResponse.json({ error: "Google Sheets not connected" }, { status: 409 });
   }
@@ -72,13 +72,13 @@ export async function POST(req: NextRequest) {
   const result = await withJobRun(
     "import_google_sheets",
     async () => {
-      const res = await importRows(session.user.id, normalized);
+      const res = await importRows(authed.userId, normalized);
       return {
         result: res,
         metadata: { ...res, rowsInFile: Math.max(rows.length - 1, 0), unparseableRows: errors.length },
       };
     },
-    session.user.id
+    authed.userId
   );
 
   // Remember what was imported so this connection can be re-synced later

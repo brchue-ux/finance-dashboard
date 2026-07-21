@@ -7,7 +7,7 @@
  * Body: { view: "budget" | "portfolio", force?: boolean }
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { llmAnalysisCache, bankConnections, wealthsimpleConnections } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -63,11 +63,11 @@ function refreshInBackground(userId: string, view: CardView) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
   const { view, force = false } = (await req.json()) as { view: CardView; force?: boolean };
-  const userId = session.user.id;
+  const userId = authed.userId;
   const now = Math.floor(Date.now() / 1000);
 
   // Get last sync timestamp for this view's data source

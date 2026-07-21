@@ -4,7 +4,7 @@
  * DELETE /api/alerts/:id
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { priceAlerts } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -22,8 +22,8 @@ const patchSchema = z
   .refine((b) => Object.keys(b).length > 0, { message: "empty patch" });
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
   const { id } = await ctx.params;
 
   const parsed = patchSchema.safeParse(await req.json());
@@ -36,7 +36,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const [existing] = await db
     .select()
     .from(priceAlerts)
-    .where(and(eq(priceAlerts.id, id), eq(priceAlerts.userId, session.user.id)))
+    .where(and(eq(priceAlerts.id, id), eq(priceAlerts.userId, authed.userId)))
     .limit(1);
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
@@ -61,13 +61,13 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 }
 
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
   const { id } = await ctx.params;
 
   const result = await db
     .delete(priceAlerts)
-    .where(and(eq(priceAlerts.id, id), eq(priceAlerts.userId, session.user.id)));
+    .where(and(eq(priceAlerts.id, id), eq(priceAlerts.userId, authed.userId)));
 
   if (result.rowsAffected === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ ok: true });

@@ -7,24 +7,22 @@
  * delete would orphan allocations and silently rewrite spending history.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { budgetEnvelopes, transactions, transactionSplits } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 
 async function ownedEnvelope(req: NextRequest, id: string) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return { error: "Unauthorized" as const, status: 401 };
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed;
 
   const [row] = await db
     .select()
     .from(budgetEnvelopes)
-    .where(
-      and(eq(budgetEnvelopes.id, id), eq(budgetEnvelopes.userId, session.user.id))
-    );
+    .where(and(eq(budgetEnvelopes.id, id), eq(budgetEnvelopes.userId, authed.userId)));
 
-  if (!row) return { error: "Not found" as const, status: 404 };
-  return { row, userId: session.user.id };
+  if (!row) return { response: NextResponse.json({ error: "Not found" }, { status: 404 }) };
+  return { row, userId: authed.userId };
 }
 
 export async function PATCH(
@@ -33,9 +31,7 @@ export async function PATCH(
 ) {
   const { id } = await params;
   const found = await ownedEnvelope(req, id);
-  if ("error" in found) {
-    return NextResponse.json({ error: found.error }, { status: found.status });
-  }
+  if ("response" in found) return found.response;
 
   const body = await req.json().catch(() => null);
   const patch: Partial<typeof budgetEnvelopes.$inferInsert> = {};
@@ -102,9 +98,7 @@ export async function DELETE(
 ) {
   const { id } = await params;
   const found = await ownedEnvelope(req, id);
-  if ("error" in found) {
-    return NextResponse.json({ error: found.error }, { status: found.status });
-  }
+  if ("response" in found) return found.response;
 
   await db
     .update(budgetEnvelopes)

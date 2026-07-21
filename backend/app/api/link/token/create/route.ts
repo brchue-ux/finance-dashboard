@@ -4,13 +4,13 @@
  * Frontend uses this to initialize the Plaid Link widget.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { plaidClient } from "@/lib/plaid";
 import { CountryCode, Products } from "plaid";
 
 export async function POST(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
   // Required only for RBC's OAuth-based Link flow, and only once registered
   // in the Plaid dashboard (Team Settings -> API -> Allowed redirect URIs).
@@ -37,8 +37,8 @@ export async function POST(req: NextRequest) {
   // institution-picker + login that actually records on_success.public_token.
   const clientUserId =
     (process.env.PLAID_ENV ?? "sandbox") === "sandbox"
-      ? `${session.user.id}-${crypto.randomUUID()}`
-      : session.user.id;
+      ? `${authed.userId}-${crypto.randomUUID()}`
+      : authed.userId;
 
   const response = await plaidClient.linkTokenCreate({
     user: { client_user_id: clientUserId },

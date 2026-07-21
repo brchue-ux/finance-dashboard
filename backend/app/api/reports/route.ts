@@ -7,16 +7,16 @@
  * The monthly spending drill-down reuses GET /api/budget for that month.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { bankAccounts, bankBalanceSnapshots, portfolioSnapshots, transactions, transactionSplits } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { attributeSpend } from "@/lib/budget/summarize";
 
 export async function GET(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const userId = session.user.id;
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
+  const userId = authed.userId;
 
   const { searchParams } = new URL(req.url);
   const months = Math.min(parseInt(searchParams.get("months") ?? "12", 10) || 12, 60);

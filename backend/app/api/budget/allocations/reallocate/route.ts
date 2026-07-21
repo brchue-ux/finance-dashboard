@@ -9,17 +9,17 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { budgetEnvelopes, envelopeAllocations } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { planReallocation } from "@/lib/budget/reallocate";
 
 export async function POST(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authed = await requireUser(req);
+  if ("response" in authed) return authed.response;
 
-  const userId = session.user.id;
+  const userId = authed.userId;
   const body = await req.json().catch(() => null);
 
   const now = new Date();
