@@ -204,3 +204,36 @@ describe("most specific rule wins, regardless of envelope order", () => {
     expect(categorize("A & W #4910 NIAGARA ST WELLA", envs)).toBe("uncategorized");
   });
 });
+
+describe("normalizeDescription — merchant identity", () => {
+  // Every string here is verbatim from real bank data.
+
+  it("strips a per-order id so one merchant is one merchant", () => {
+    // 173 Amazon variants on real data, each order id making its own merchant.
+    expect(normalizeDescription("AMZN MKTP CA*097ZX38Y3 866-216-1072")).toBe(
+      "AMZN MKTP CA 866-216-1072"
+    );
+  });
+
+  // The regression that caught the first attempt: many processors put the REAL
+  // merchant name after the asterisk. Stripping it lost a $1,687 kids' camp
+  // from Kids & Activities, and only a row-by-row check over the whole corpus
+  // surfaced it — one changed row in 2,335.
+  it("keeps a merchant name that follows a processor asterisk", () => {
+    expect(normalizeDescription("BAM*STEM CAMP EMBRO")).toBe("BAM*STEM CAMP EMBRO");
+  });
+
+  it("strips a store number whether or not a space follows the hash", () => {
+    expect(normalizeDescription("CANADIAN TIRE #118 WELLAND")).toBe("CANADIAN TIRE WELLAND");
+    expect(normalizeDescription("BOSTON PIZZA # 507 NIAGARA FALLS")).toBe(
+      "BOSTON PIZZA NIAGARA FALLS"
+    );
+  });
+
+  it("collapses the double space that split one employer into two", () => {
+    // 46 deposits said "STERICYCLE  ULC" and 16 said "STERICYCLE ULC".
+    expect(normalizeDescription("EFT Deposit from STERICYCLE  ULC")).toBe(
+      normalizeDescription("EFT Deposit from STERICYCLE ULC")
+    );
+  });
+});

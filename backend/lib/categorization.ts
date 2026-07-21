@@ -33,7 +33,13 @@ export interface Envelope {
 export function normalizeDescription(raw: string): string {
   return raw
     .toUpperCase()
-    .replace(/#\d+/g, "")         // strip branch/location codes
+    .replace(/#\s*\d+/g, "")      // strip branch/store codes, with or without a space
+    // Per-order ids after a payment-processor asterisk ("AMZN MKTP CA*097ZX38Y3"),
+    // which otherwise make every Amazon order its own merchant — 173 variants on
+    // real data. Requires a digit in the run: many processors use the asterisk to
+    // prefix the REAL merchant name ("BAM*STEM CAMP"), and stripping that lost a
+    // $1,687 kids' camp from its envelope.
+    .replace(/\*(?=[A-Z0-9]*\d)[A-Z0-9]{4,}/g, "")
     .replace(/\s{2,}/g, " ")      // collapse whitespace
     .trim();
 }
