@@ -119,3 +119,88 @@ describe("categorize — real merchants that should keep working", () => {
     expect(categorize(description, envelopes)).toBe(expected);
   });
 });
+
+describe("most specific rule wins, regardless of envelope order", () => {
+  /**
+   * The property that matters: these must resolve the same way no matter how
+   * the envelopes are ordered. sortOrder is user-editable, so under
+   * first-match-wins an ordinary reorder in the UI would silently have moved
+   * real money into the wrong envelope with nothing to surface it.
+   */
+  const pairs: { desc: string; expect: string; general: Envelope; specific: Envelope }[] = [
+    {
+      desc: "UBER CANADA/UBEREATS TORONTO",
+      expect: "Restaurants",
+      general: { name: "Transport", categoryRules: ["UBER"], sortOrder: 0 },
+      specific: { name: "Restaurants", categoryRules: ["UBER EATS"], sortOrder: 1 },
+    },
+    {
+      desc: "CANADIAN TIRE GAS BAR #118 WELLAND",
+      expect: "Transport",
+      general: { name: "Home & Hardware", categoryRules: ["CANADIAN TIRE"], sortOrder: 0 },
+      specific: { name: "Transport", categoryRules: ["CANADIAN TIRE GAS"], sortOrder: 1 },
+    },
+    {
+      desc: "COSTCO GAS #22 ST CATHARINES",
+      expect: "Transport",
+      general: { name: "Groceries", categoryRules: ["COSTCO"], sortOrder: 0 },
+      specific: { name: "Transport", categoryRules: ["COSTCO GAS"], sortOrder: 1 },
+    },
+  ];
+
+  for (const p of pairs) {
+    it(`"${p.desc}" -> ${p.expect} with the general rule first`, () => {
+      expect(categorize(p.desc, [p.general, p.specific])).toBe(p.expect);
+    });
+
+    it(`"${p.desc}" -> ${p.expect} with the specific rule first`, () => {
+      const flipped = [
+        { ...p.specific, sortOrder: 0 },
+        { ...p.general, sortOrder: 1 },
+      ];
+      expect(categorize(p.desc, flipped)).toBe(p.expect);
+    });
+  }
+
+  it("the plain store still reaches the general envelope", () => {
+    // The specific rule must not swallow the parent merchant: a Canadian Tire
+    // store visit is not a gas purchase. 47 real rows depend on this.
+    const envs: Envelope[] = [
+      { name: "Transport", categoryRules: ["CANADIAN TIRE GAS"], sortOrder: 0 },
+      { name: "Home & Hardware", categoryRules: ["CANADIAN TIRE"], sortOrder: 1 },
+    ];
+    expect(categorize("CANADIAN TIRE #118 WELLAND", envs)).toBe("Home & Hardware");
+  });
+
+  it("sort order still breaks a genuine tie", () => {
+    // Equally specific rules keep the previous first-wins behaviour exactly.
+    const envs: Envelope[] = [
+      { name: "First", categoryRules: ["SHELL"], sortOrder: 0 },
+      { name: "Second", categoryRules: ["SHELL"], sortOrder: 1 },
+    ];
+    expect(categorize("SHELL C22517 WELLAND", envs)).toBe("First");
+  });
+
+  it("specificity is measured after normalizing, so punctuation cannot inflate it", () => {
+    // "A & W" and "A&W" are the same rule and must score the same: the spaced
+    // form must not outrank a genuinely more specific rule just by having more
+    // characters before normalization.
+    const envs: Envelope[] = [
+      { name: "Loose", categoryRules: ["A & W"], sortOrder: 0 },
+      { name: "Tight", categoryRules: ["A&W NIAGARA"], sortOrder: 1 },
+    ];
+    expect(categorize("A & W #4910 NIAGARA ST WELLA", envs)).toBe("Tight");
+  });
+
+  it("a rule containing a branch code can never match", () => {
+    // Not the specificity change, but worth pinning while adjacent: descriptions
+    // are normalized with "#1234" stripped, so a rule written with one has
+    // nothing to match against and silently never fires. Authoring a rule that
+    // way is a mistake, and this records that it fails closed rather than
+    // half-matching.
+    const envs: Envelope[] = [
+      { name: "Branch", categoryRules: ["A&W #4910"], sortOrder: 0 },
+    ];
+    expect(categorize("A & W #4910 NIAGARA ST WELLA", envs)).toBe("uncategorized");
+  });
+});

@@ -70,6 +70,29 @@ function ruleMatches(rule: string, tokenizedDescription: string): boolean {
 
 /**
  * Returns the envelope name that matches, or "uncategorized".
+ *
+ * The most SPECIFIC rule wins, measured as the length of the rule's normalized
+ * core — not the first rule found by envelope sort order.
+ *
+ * Why: a merchant that matches two envelopes is almost always a general rule
+ * and a more precise one describing a subset of it, and the precise one is the
+ * right answer regardless of which envelope happens to sort first. Two of these
+ * are live in real data:
+ *
+ *   "UBER CANADA/UBEREATS TORONTO"  Restaurants "UBER EATS" vs Transport "UBER"
+ *   "CANADIAN TIRE #118 WELLAND"    Home & Hardware "CANADIAN TIRE"
+ *                                   vs Transport "CANADIAN TIRE GAS"
+ *
+ * Under first-match-wins both resolved correctly only because Restaurants and
+ * Transport happened to sort where they did. Reordering envelopes in the UI —
+ * an ordinary thing to do, sortOrder is user-editable — would silently have
+ * filed every Uber Eats order under Transport. Nothing would have surfaced it;
+ * the transactions would just have been in the wrong envelope.
+ *
+ * Sort order still decides genuine ties, so equally-specific rules behave
+ * exactly as before. This also retires the positional workaround that kept
+ * "TACO BELL" ahead of Utilities' "BELL " — token matching already prevents
+ * that collision, and specificity now covers the ordering concern too.
  */
 export function categorize(
   description: string,
@@ -79,15 +102,26 @@ export function categorize(
 
   const sorted = [...envelopes].sort((a, b) => a.sortOrder - b.sortOrder);
 
+  let best: { name: string; specificity: number } | null = null;
+
   for (const envelope of sorted) {
     for (const rule of envelope.categoryRules) {
-      if (ruleMatches(rule, haystack)) {
-        return envelope.name;
+      if (!ruleMatches(rule, haystack)) continue;
+
+      // Length of the normalized core, so "UBER EATS" (9) beats "UBER" (4).
+      // Measured post-tokenize so punctuation and spacing in the authored rule
+      // do not inflate it — "A&W" and "A & W" are equally specific.
+      const specificity = tokenize(rule).length;
+
+      // Strictly greater: the first envelope in sort order wins a tie, which
+      // preserves the previous behaviour exactly for equally-specific rules.
+      if (!best || specificity > best.specificity) {
+        best = { name: envelope.name, specificity };
       }
     }
   }
 
-  return "uncategorized";
+  return best?.name ?? "uncategorized";
 }
 
 /**
