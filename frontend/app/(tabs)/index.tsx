@@ -204,7 +204,10 @@ export default function BudgetScreen() {
           <LLMCards
             cards={visibleCards}
             lastAnalyzedAt={llmQuery.data?.lastAnalyzedAt ?? null}
-            isLoading={llmQuery.isLoading || reanalyze.isPending}
+            // Cold start only — a background refresh keeps the existing cards
+            // visible rather than replacing them with a spinner.
+            isLoading={llmQuery.isLoading && !llmQuery.data}
+            isRefreshing={Boolean(llmQuery.data?.refreshing) || reanalyze.isPending}
             onReanalyze={() => {
               // A fresh analysis supersedes every prior verdict.
               setResolvedTitles([]);

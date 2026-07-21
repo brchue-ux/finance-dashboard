@@ -5,7 +5,10 @@ import type { LLMCard } from "@/hooks/useBudget";
 interface LLMCardsProps {
   cards: LLMCard[];
   lastAnalyzedAt: number | null;
+  /** True only on a cold start with nothing to show. */
   isLoading: boolean;
+  /** Regenerating behind the cards already on screen — must not blank them. */
+  isRefreshing?: boolean;
   onReanalyze: () => void;
   onApproveAction?: (card: LLMCard) => void;
   onDismissAction?: (card: LLMCard) => void;
@@ -29,6 +32,7 @@ export function LLMCards({
   cards,
   lastAnalyzedAt,
   isLoading,
+  isRefreshing = false,
   onReanalyze,
   onApproveAction,
   onDismissAction,
@@ -41,10 +45,17 @@ export function LLMCards({
       {/* LLM bar */}
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>
-          {isLoading ? "Analyzing..." : lastAnalyzedAt ? `✦ Analyzed ${timeAgo(lastAnalyzedAt)}` : "✦ Not yet analyzed"}
+          {isLoading
+            ? "Analyzing..."
+            : isRefreshing
+              ? // The cards below stay on screen and readable while this runs.
+                `✦ Updating — showing analysis from ${timeAgo(lastAnalyzedAt!)}`
+              : lastAnalyzedAt
+                ? `✦ Analyzed ${timeAgo(lastAnalyzedAt)}`
+                : "✦ Not yet analyzed"}
         </Text>
-        <Pressable onPress={onReanalyze} disabled={isLoading}>
-          {isLoading ? (
+        <Pressable onPress={onReanalyze} disabled={isLoading || isRefreshing}>
+          {isLoading || isRefreshing ? (
             <ActivityIndicator size="small" color={COLORS.brandPurple} />
           ) : (
             <Text style={{ color: COLORS.brandPurple, fontSize: 13, fontWeight: "600" }}>Re-analyze</Text>

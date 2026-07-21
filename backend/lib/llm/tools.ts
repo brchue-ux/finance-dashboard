@@ -80,10 +80,27 @@ function capToolCalls(tools: ToolSet, maxCalls: number): ToolSet {
 }
 
 /**
- * Assemble the tool set for one advisory call. Both paths (auto-cards and
- * chat) get full access — deliberate UX-over-cost choice, revisited post-launch.
+ * What the tools are being assembled for. Budget card generation gets none:
+ * its output is arithmetic over the user's own transactions, and measurement
+ * showed the tool loop was the dominant cost of the wait — 143.9s with web
+ * search vs 30.7s without, on identical context. Nothing in the generated
+ * budget cards (merchant frequency, category averages, spend spikes) came
+ * from the web. Market data is equally irrelevant there.
+ *
+ * Portfolio cards and chat keep full access: current prices, news and
+ * computed indicators genuinely require outside data.
  */
-export async function assembleTools(): Promise<{ tools: ToolSet; systemSuffix: string }> {
+export type ToolPurpose = "budget-cards" | "portfolio-cards" | "chat";
+
+export async function assembleTools(
+  purpose: ToolPurpose = "chat"
+): Promise<{ tools: ToolSet; systemSuffix: string }> {
+  if (purpose === "budget-cards") {
+    // No indicator clause: the service isn't unavailable, it's inapplicable,
+    // and telling the model otherwise would be false.
+    return { tools: {}, systemSuffix: "" };
+  }
+
   const tools: ToolSet = {
     web_search: anthropic.tools.webSearch_20260209({ maxUses: 5 }),
   };

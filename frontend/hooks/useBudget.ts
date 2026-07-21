@@ -80,24 +80,36 @@ export function useSyncBudget() {
   });
 }
 
+export interface LLMCardsResponse {
+  cards: LLMCard[];
+  lastAnalyzedAt: number;
+  cached: boolean;
+  /** Server is regenerating behind this response; poll until it clears. */
+  refreshing: boolean;
+}
+
+/**
+ * The server answers from cache immediately and regenerates behind it, so this
+ * only blocks on a true cold start. While `refreshing` is set we poll, then
+ * stop as soon as fresh cards land — the user sees the old cards the whole
+ * time rather than a spinner.
+ */
 export function useLLMCards(view: "budget" | "portfolio") {
   return useQuery({
     queryKey: ["llm-cards", view],
-    queryFn: () =>
-      api.post<{ cards: LLMCard[]; lastAnalyzedAt: number; cached: boolean }>(
-        "/api/llm/analyze",
-        { view }
-      ),
-    staleTime: Infinity, // managed by server-side cache logic
+    queryFn: () => api.post<LLMCardsResponse>("/api/llm/analyze", { view }),
+    staleTime: Infinity, // regeneration is decided server-side, not by staleTime
+    refetchInterval: (query) => (query.state.data?.refreshing ? 5000 : false),
   });
 }
 
 export function useForceReanalyze(view: "budget" | "portfolio") {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () =>
-      api.post("/api/llm/analyze", { view, force: true }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["llm-cards", view] }),
+    mutationFn: () => api.post<LLMCardsResponse>("/api/llm/analyze", { view, force: true }),
+    // Seed the cache with the response so polling starts from the refreshing
+    // flag this call just set, instead of racing an invalidate/refetch.
+    onSuccess: (data) => qc.setQueryData(["llm-cards", view], data),
   });
 }
 

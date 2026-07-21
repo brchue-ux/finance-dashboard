@@ -35,7 +35,14 @@ const MAX_OUTPUT_TOKENS = 16000;
 
 const anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
-function batchTools() {
+/**
+ * Mirrors assembleTools()'s purpose split: budget cards are arithmetic over the
+ * user's own transactions and need no outside data, so they declare no tools.
+ * Keeping this in step with lib/llm/tools.ts matters — the two paths generate
+ * the same cards and would otherwise diverge in content and cost.
+ */
+function batchTools(view: "budget" | "portfolio") {
+  if (view === "budget") return [];
   return [
     { type: "web_search_20260209" as const, name: "web_search" as const, max_uses: 5 },
   ];
@@ -87,24 +94,30 @@ async function submitCardBatch(userId: string): Promise<void> {
     ]);
 
     const mcpServers = batchMcpServers();
-    // Same degradation rule as the sync path: no MCP service configured →
-    // explicit no-fabrication clause instead of silently missing tools
-    const systemSuffix = mcpServers ? "" : NO_INDICATOR_DATA_CLAUSE;
 
     // custom_id must match Anthropic's ^[a-zA-Z0-9_-]{1,64}$ — no colon. jobId
     // is a hyphenated UUID (no underscore), so "_" is an unambiguous separator
     // for the pollPendingBatches() split below.
-    const makeRequest = (view: "budget" | "portfolio", context: string) => ({
-      custom_id: `${jobId}_${view}`,
-      params: {
-        model: MODEL,
-        max_tokens: MAX_OUTPUT_TOKENS,
-        system: SYSTEM_PROMPT + context + systemSuffix,
-        messages: [{ role: "user" as const, content: AUTO_CARD_INSTRUCTION }],
-        tools: batchTools(),
-        ...(mcpServers ? { mcp_servers: mcpServers } : {}),
-      },
-    });
+    const makeRequest = (view: "budget" | "portfolio", context: string) => {
+      // Indicator tools and their no-fabrication clause are portfolio-only:
+      // attaching an MCP server to the budget request would reintroduce the
+      // tool loop the purpose split exists to remove, and claiming indicator
+      // data is "unavailable" there would be false rather than protective.
+      const useOutsideData = view === "portfolio";
+      const servers = useOutsideData ? mcpServers : undefined;
+      const systemSuffix = useOutsideData && !servers ? NO_INDICATOR_DATA_CLAUSE : "";
+      return {
+        custom_id: `${jobId}_${view}`,
+        params: {
+          model: MODEL,
+          max_tokens: MAX_OUTPUT_TOKENS,
+          system: SYSTEM_PROMPT + context + systemSuffix,
+          messages: [{ role: "user" as const, content: AUTO_CARD_INSTRUCTION }],
+          tools: batchTools(view),
+          ...(servers ? { mcp_servers: servers } : {}),
+        },
+      };
+    };
 
     const batch = await anthropicClient.beta.messages.batches.create({
       requests: [

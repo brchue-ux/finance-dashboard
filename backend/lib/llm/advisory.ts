@@ -31,7 +31,9 @@ export async function generateCards(userId: string, view: CardView) {
     view === "budget"
       ? await assembleBudgetContext(userId)
       : await assemblePortfolioContext(userId);
-  const { tools, systemSuffix } = await assembleTools();
+  const { tools, systemSuffix } = await assembleTools(
+    view === "budget" ? "budget-cards" : "portfolio-cards"
+  );
 
   const { text } = await generateText({
     model: anthropic(MODEL),
