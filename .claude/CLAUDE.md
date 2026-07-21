@@ -8,12 +8,26 @@
 <!-- ▛▀▀ CURRENT STATE — READ THIS FIRST, IT IS THE AUTHORITATIVE TRUTH ▀▀▜ -->
 <!-- Everything BELOW this block is historical layering kept for context.    -->
 <!-- If this block and anything below disagree, THIS BLOCK WINS.             -->
-<!-- Last updated: 2026-07-20 (CLEAN GitHub history; auth drizzle-hoisting fix; device-verified via EAS dev build; connect wizard VERIFIED end-to-end on-device — Plaid bank link works; PUSH-STATE: only the local.db purge is on GitHub, 12 later commits are local-only/unpushed). -->
+<!-- Last updated: 2026-07-20 late (contract audit closed; budget envelopes + categorization fixed; 92-test Vitest suite; transaction splits end-to-end). -->
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 
-## ⇒ START HERE — Finance Dashboard current state (2026-07-20)
+## ⇒ START HERE — Finance Dashboard current state (2026-07-20, late session)
 
-**Phase: BACKEND + FRONTEND BUILT and COMMITTED locally on top of a clean, purged base. PUSH-STATE (verified via `git ls-remote`): `origin/main` = `de8a414` — ONLY the local.db purge is on GitHub; the 14 feature/fix/docs commits since are LOCAL-ONLY and unpushed (prior "all pushed" notes were wrong). Push (`git push -u origin main`, no upstream set yet) when the user OKs. Device-verified on Android via an EAS dev-client build. All three former "manual" tasks are DONE — the Plaid bank-connect flow was verified end-to-end on-device (accounts populated). Task #7 (Holding Detail chart) is DONE in code and statically verified: fixed the blank-chart root cause (Yahoo null-bar zero-fill) + added RSI/MACD sub-panes + a web-direct render path — but its on-device/on-web VISUAL render is PENDING the user's own test (planned the following day, 2026-07-21).**
+**Phase: FEATURE-COMPLETE against the audit punch list; everything statically verified, a growing queue awaiting one device session.**
+
+**PUSH-STATE:** `origin/main` = `b394bd8` (pushed and verified this session; remote confirmed to carry **no `.db` files**). **2 commits are LOCAL-ONLY and unpushed:** `cd8cf06` (transaction splits schema/API/budget math) and `a1d5050` (split editor UI + reports/LLM split-awareness). Push when the user OKs.
+
+**A CONTRACT AUDIT (every backend route vs every frontend call site) found the docs were undercounting open work — trust code over the status text below.** It surfaced the single biggest defect in the project:
+
+> **`budget_envelopes` had NO write path anywhere** — no route, no UI, no seed. So `categorize()` looped over zero envelopes and returned `"uncategorized"` for **1,758 of 1,762 real transactions**. `lib/categorization.ts`'s `DEFAULT_RULES` was a dead export despite its own docstring saying it seeds the table. Now fixed: envelope CRUD + defaults + recategorize, and **763 of 1,762 real transactions categorized**.
+
+**Four real categorization bugs were found and fixed against actual transaction descriptions** — `"A&W"` never matched `A & W` (13 rows), `"UBER EATS"` never matched `UBEREATS` (Transport was stealing food delivery), `"STEAM "` never matched `STEAMGAMES.COM`, and `TACO BELL` was claimed by Utilities' `"BELL"` on sort order. **An intermediate punctuation-stripping fix regressed `BELL` → `BELLIES`/`BELLAS`; aggregate counts made that look like an *improvement* and only a case-by-case check caught it.** All are now regression-tested.
+
+**Built this session (all 9 audit items + splits):** notable-transaction cards on Budget; envelope CRUD + `/manage-envelopes`; unconfigured-vs-overBudget state; Settings connection badge; System status + Developer screens; Import UI (`/import`, CSV/Google/Excel); TradingView webhook screen + plan notice (closes the `build-reminders.md` #2 violation); chained connect wizard (`?mode=single` for "+ Add account"); removed dead `/api/plaid/exchange`; **transaction splits** (schema, API, budget math, Reports, LLM context, editor UI).
+
+**⚠ UNEXERCISED UI — worth ONE device session covering all of it at once:** split editor (remainder arithmetic, envelope picker, modal), connect-wizard auto-advance, document picker (CSV import), Google/Excel OAuth handoffs, and the Holding Detail chart's visual render. All are tsc-clean and bundle-clean (5.32 MB) but none have had a real tap.
+
+**Real data status:** `local.db` holds 1,762 real transactions, **0 splits**, and 7 envelopes with **$0 targets** (deliberately — the user does not want to set real budgets yet; the UI now renders that as "unconfigured" rather than a wall of "over budget"). **999 transactions remain uncategorized ($72.7k)** pending envelope decisions only the user can make — dominated by `WAL-MART SUPERCENTER` (171 txns, $17.5k, genuinely ambiguous groceries-vs-shopping).
 
 <!-- ▛▀▀ 2026-07-20 SESSION — SUPERSEDES stale "not pushed / paused / blocked" lines further below ▀▀▜ -->
 **All three manual tasks tackled; everything is now on `origin/main` in a clean history.**
