@@ -202,6 +202,62 @@ describe("summarizeTotals", () => {
     expect(t.configuredEnvelopes).toBe(1);
     expect(t.totalEnvelopes).toBe(3);
   });
+
+  // The bug these guard: `saved` was totalIncome - totalSpent, and totalSpent
+  // only counts spend that reached an envelope. Every uncategorized dollar was
+  // therefore counted as saved. On real data that was $72.7k across 925
+  // transactions, rendering a green positive net position for a negative month.
+  describe("spend that reaches no envelope still counts as spent", () => {
+    it("does not count uncategorized spend as saved", () => {
+      const txns = [txn("Groceries", -100), txn(null, -400), txn(null, 1000)];
+      const summaries = summarizeEnvelopes([env("Groceries", 500)], [], txns);
+      const t = summarizeTotals(summaries, txns);
+
+      expect(t.totalSpent).toBe(100); // envelope-attributed only
+      expect(t.unattributedSpent).toBe(400);
+      expect(t.totalOutflow).toBe(500);
+      expect(t.saved).toBe(500); // NOT 900
+    });
+
+    it('treats the literal "uncategorized" category as unattributed', () => {
+      const txns = [txn("uncategorized", -75)];
+      const summaries = summarizeEnvelopes([env("Groceries", 500)], [], txns);
+      const t = summarizeTotals(summaries, txns);
+      expect(t.unattributedSpent).toBe(75);
+      expect(t.saved).toBe(-75);
+    });
+
+    it("treats a category naming no envelope as unattributed", () => {
+      // What a CSV import produces when the bank's own labels are carried
+      // through: the row looks categorized but matches no envelope.
+      const txns = [txn("Dining", -60)];
+      const summaries = summarizeEnvelopes([env("Restaurants", 500)], [], txns);
+      const t = summarizeTotals(summaries, txns);
+      expect(t.totalSpent).toBe(0);
+      expect(t.unattributedSpent).toBe(60);
+    });
+
+    it("reconciles: attributed + unattributed equals total outflow", () => {
+      const txns = [txn("Groceries", -100), txn("Restaurants", -50), txn(null, -25)];
+      const summaries = summarizeEnvelopes([env("Groceries", 500), env("Restaurants", 300)], [], txns);
+      const t = summarizeTotals(summaries, txns);
+      expect(t.totalSpent + t.unattributedSpent).toBe(t.totalOutflow);
+    });
+
+    it("follows splits, so a split into a real envelope is not unattributed", () => {
+      const parent = txn("Shopping", -100);
+      const splits = [
+        { transactionId: parent.id, category: "Groceries", amount: -60 },
+        { transactionId: parent.id, category: "Whatever", amount: -40 },
+      ];
+      const summaries = summarizeEnvelopes([env("Groceries", 500)], [], [parent], splits);
+      const t = summarizeTotals(summaries, [parent], splits);
+
+      expect(t.totalSpent).toBe(60);
+      expect(t.unattributedSpent).toBe(40); // the half naming no envelope
+      expect(t.totalOutflow).toBe(100); // parent counted once, not twice
+    });
+  });
 });
 
 describe("attributeSpend — splits replace the parent transaction", () => {

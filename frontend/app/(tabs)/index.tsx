@@ -148,7 +148,11 @@ export default function BudgetScreen() {
         {/* Summary strip */}
         {summary && (
           <View style={{ flexDirection: "row", gap: 8, marginBottom: 20 }}>
-            <StatCard label="Spent" value={fmt(summary.totalSpent)} />
+            {/* Total outflow, not envelope-attributed spend. Showing only what
+                reached an envelope made "Spent" shrink as categorization
+                coverage got worse — the opposite of the truth. The uncounted
+                remainder is called out below rather than quietly dropped. */}
+            <StatCard label="Spent" value={fmt(summary.totalOutflow)} />
             {/* With nothing budgeted, "Remaining" would just be -Spent, which
                 reads as overspend against a limit that was never set. */}
             <StatCard
@@ -168,6 +172,40 @@ export default function BudgetScreen() {
               valueColor={summary.saved >= 0 ? COLORS.success : COLORS.danger}
             />
           </View>
+        )}
+
+        {/* Spend that reached no envelope. Without this the money simply is not
+            on screen anywhere: it is absent from every envelope card, and the
+            envelope grid below is the only place spending is itemised. It still
+            reduces Saved, so leaving it unexplained makes the numbers look
+            wrong rather than incomplete. Tapping goes where it gets fixed. */}
+        {summary && summary.unattributedSpent > 0 && (
+          <Pressable
+            onPress={() => router.push("/manage-envelopes")}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              padding: 12,
+              marginBottom: 20,
+              borderRadius: 10,
+              backgroundColor: "rgba(245,158,11,0.08)",
+              borderWidth: 1,
+              borderColor: "rgba(245,158,11,0.25)",
+            }}
+          >
+            <Text style={{ fontSize: 16 }}>📥</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: COLORS.warning, fontWeight: "600", fontSize: 13 }}>
+                {fmt(summary.unattributedSpent)} not in any envelope
+              </Text>
+              <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
+                {Math.round((summary.unattributedSpent / summary.totalOutflow) * 100)}% of this
+                month's spending — counted in your total, but in no envelope below.
+              </Text>
+            </View>
+            <Text style={{ color: COLORS.textMuted, fontSize: 16 }}>›</Text>
+          </Pressable>
         )}
 
         {/* Envelope grid */}

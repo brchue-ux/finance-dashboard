@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
   ]);
 
   const summaries = summarizeEnvelopes(envelopes, allocations, monthTxns, splits);
-  const totals = summarizeTotals(summaries, monthTxns);
+  const totals = summarizeTotals(summaries, monthTxns, splits);
   const notableByCategory = computeNotableTransactions(summaries, monthTxns, splits);
 
   return NextResponse.json({

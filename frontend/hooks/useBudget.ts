@@ -16,7 +16,14 @@ export interface BudgetEnvelope {
 }
 
 export interface BudgetSummary {
+  /** Spend that reached an envelope. Less than totalOutflow whenever
+   *  categorization coverage is incomplete. */
   totalSpent: number;
+  /** Spend that reached no envelope — uncategorized, or a category naming
+   *  none. Invisible in the envelope grid, which is why it is surfaced. */
+  unattributedSpent: number;
+  /** Every dollar that left this month: totalSpent + unattributedSpent. */
+  totalOutflow: number;
   totalAllocated: number;
   totalIncome: number;
   remaining: number;

@@ -184,17 +184,50 @@ export function computeNotableTransactions(
     .filter((c) => c.transactions.length > 0);
 }
 
-export function summarizeTotals(summaries: EnvelopeSummary[], monthTxns: TransactionRow[]) {
+export function summarizeTotals(
+  summaries: EnvelopeSummary[],
+  monthTxns: TransactionRow[],
+  splits: SplitRow[] = []
+) {
+  const attributed = attributeSpend(monthTxns, splits);
+  const envelopeNames = new Set(summaries.map((e) => e.name));
+
+  // Spend that landed in an envelope. Excludes anything the categorization
+  // engine could not place, by construction.
   const totalSpent = summaries.reduce((s, e) => s + e.spent, 0);
+
+  // Spend that landed nowhere: no category at all, "uncategorized", or a
+  // category naming no envelope (a bank's own label from a CSV import, or an
+  // envelope that was renamed out from under it). Every outflow is in exactly
+  // one of these two buckets.
+  const unattributedSpent = attributed
+    .filter((a) => a.amount < 0 && !(a.category !== null && envelopeNames.has(a.category)))
+    .reduce((s, a) => s + Math.abs(a.amount), 0);
+
+  // Computed independently rather than as totalSpent + unattributedSpent, so
+  // the two halves are cross-checkable instead of reconciling by definition.
+  const totalOutflow = attributed
+    .filter((a) => a.amount < 0)
+    .reduce((s, a) => s + Math.abs(a.amount), 0);
+
   const totalAllocated = summaries.reduce((s, e) => s + e.allocated, 0);
   const totalIncome = monthTxns.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
 
   return {
     totalSpent,
+    unattributedSpent,
+    totalOutflow,
     totalAllocated,
     totalIncome,
     remaining: totalAllocated - totalSpent,
-    saved: totalIncome - totalSpent,
+    // Against ALL money that left, not just the part that reached an envelope.
+    // This used to be totalIncome - totalSpent, which silently treated every
+    // uncategorized dollar as saved: with 925 uncategorized transactions worth
+    // $72.7k on real data, the home screen reported a large positive net
+    // position for a month that was actually negative. Categorization coverage
+    // is a display concern; it must not change what the arithmetic says left
+    // the account.
+    saved: totalIncome - totalOutflow,
     // Lets the client distinguish "nothing budgeted yet" from "budgeted zero",
     // instead of rendering -Spent as if it were overspend.
     configuredEnvelopes: summaries.filter((e) => !e.unconfigured).length,
