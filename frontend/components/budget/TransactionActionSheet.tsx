@@ -24,11 +24,16 @@ export function TransactionActionSheet({
   transaction,
   onChangeCategory,
   onSplit,
+  onViewOriginalPurchase,
   onClose,
 }: {
   transaction: Transaction;
   onChangeCategory: () => void;
   onSplit?: () => void;
+  /** Refund rows with a matched purchase: jump straight to that row. The feed
+   *  chip says "Refund → Jun"; this is the one-press way to actually get there
+   *  — a named destination must never require the user to go find it. */
+  onViewOriginalPurchase?: () => void;
   onClose: () => void;
 }) {
   return (
@@ -54,6 +59,9 @@ export function TransactionActionSheet({
 
       <ActionButton icon="✎" label="Change category" onPress={onChangeCategory} />
       {onSplit && <ActionButton icon="⊟" label="Split across categories" onPress={onSplit} />}
+      {onViewOriginalPurchase && (
+        <ActionButton icon="↩" label="View original purchase" onPress={onViewOriginalPurchase} />
+      )}
 
       <Pressable onPress={onClose} style={{ paddingVertical: 14, alignItems: "center", marginTop: 8 }}>
         <Text style={{ color: COLORS.textMuted, fontSize: 15 }}>Cancel</Text>

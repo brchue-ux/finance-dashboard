@@ -113,6 +113,17 @@ export default function AccountTransactionsScreen() {
                 transaction={sheet.txn}
                 onChangeCategory={() => setSheet({ txn: sheet.txn, mode: "category" })}
                 onSplit={() => setSheet({ txn: sheet.txn, mode: "split" })}
+                onViewOriginalPurchase={
+                  sheet.txn.refundMatchedTxnId && sheet.txn.refundMatchedAccountId
+                    ? () => {
+                        const { refundMatchedAccountId, refundMatchedTxnId } = sheet.txn;
+                        setSheet(null);
+                        router.push(
+                          `/account/${refundMatchedAccountId}?highlight=${refundMatchedTxnId}`
+                        );
+                      }
+                    : undefined
+                }
                 onClose={() => setSheet(null)}
               />
             )}

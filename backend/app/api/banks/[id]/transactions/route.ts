@@ -7,8 +7,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
-import { bankAccounts, transactions, transactionSplits } from "@/db/schema";
+import { bankAccounts, budgetEnvelopes, transactions, transactionSplits } from "@/db/schema";
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { classifyRefunds } from "@/lib/budget/refunds";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -60,10 +61,46 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     splitsByTxn.set(s.transactionId, arr);
   }
 
+  // Same refund annotation as /api/budget, or a refund row reads "Refund → Jun"
+  // on one screen and as ordinary income on another. Classification needs the
+  // user's FULL history (the matching purchase is usually on a different
+  // account — card refund, chequing purchase — and always outside this page).
+  const [allTxns, envelopes] = await Promise.all([
+    db
+      .select({
+        id: transactions.id,
+        accountId: transactions.accountId,
+        date: transactions.date,
+        description: transactions.description,
+        amount: transactions.amount,
+        category: transactions.category,
+        transferSource: transactions.transferSource,
+        coverage: transactions.coverage,
+      })
+      .from(transactions)
+      .where(eq(transactions.userId, authed.userId)),
+    db
+      .select({ name: budgetEnvelopes.name })
+      .from(budgetEnvelopes)
+      .where(and(eq(budgetEnvelopes.userId, authed.userId), eq(budgetEnvelopes.active, 1))),
+  ]);
+  const refunds = classifyRefunds(allTxns, new Set(envelopes.map((e) => e.name)));
+  const txnById = new Map(allTxns.map((t) => [t.id, t]));
+
   return NextResponse.json({
     accountId,
     accountName: account.name,
-    transactions: page.map((r) => ({ ...r, splitCategories: splitsByTxn.get(r.id) ?? null })),
+    transactions: page.map((r) => {
+      const refund = refunds.get(r.id);
+      const purchase = refund?.matchedTxnId ? txnById.get(refund.matchedTxnId) : undefined;
+      return {
+        ...r,
+        splitCategories: splitsByTxn.get(r.id) ?? null,
+        refundEffectiveMonth: refund?.effectiveMonth ?? null,
+        refundMatchedTxnId: purchase?.id ?? null,
+        refundMatchedAccountId: purchase?.accountId ?? null,
+      };
+    }),
     limit,
     offset,
     hasMore,

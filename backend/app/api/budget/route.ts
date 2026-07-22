@@ -106,6 +106,8 @@ export async function GET(req: NextRequest) {
   const monthKey = `${year}-${String(month).padStart(2, "0")}`;
   const effectiveTxns = historyTxns.filter((t) => effectiveMonth(t, refunds) === monthKey);
   const refundIds = new Set(refunds.keys());
+  // For resolving a matched purchase to its account when annotating the feed.
+  const txnById = new Map(historyTxns.map((t) => [t.id, t]));
 
   // 6d — pace against the elapsed month (default view) and each category's own
   // typical monthly spend (the deeper dig on tap).
@@ -134,12 +136,20 @@ export async function GET(req: NextRequest) {
     envelopes: summaries,
     // The feed stays calendar-shaped (it should read like the bank statement);
     // each refund row carries where its money actually counted, so the UI can
-    // say "Refund → Jun" instead of the row silently vanishing from the math.
-    transactions: monthTxns.map((t) => ({
-      ...t,
-      splitCategories: splitsByTxn.get(t.id) ?? null,
-      refundEffectiveMonth: refunds.get(t.id)?.effectiveMonth ?? null,
-    })),
+    // say "Refund → Jun" instead of the row silently vanishing from the math —
+    // and, when a purchase matched, WHICH row, so one tap can land on it
+    // rather than describing a destination the user has to go find.
+    transactions: monthTxns.map((t) => {
+      const r = refunds.get(t.id);
+      const purchase = r?.matchedTxnId ? txnById.get(r.matchedTxnId) : undefined;
+      return {
+        ...t,
+        splitCategories: splitsByTxn.get(t.id) ?? null,
+        refundEffectiveMonth: r?.effectiveMonth ?? null,
+        refundMatchedTxnId: purchase?.id ?? null,
+        refundMatchedAccountId: purchase?.accountId ?? null,
+      };
+    }),
     notableTransactions: notableByCategory,
     summary: totals,
     bankConnections: connections,

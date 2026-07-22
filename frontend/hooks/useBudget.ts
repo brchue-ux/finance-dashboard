@@ -85,6 +85,10 @@ export interface Transaction {
    *  nets against (the original purchase's month when matched). Null/absent
    *  for ordinary rows and genuine income. */
   refundEffectiveMonth?: string | null;
+  /** The matched original purchase, when one was found — the jump target for
+   *  "View original purchase". Both present or both null. */
+  refundMatchedTxnId?: string | null;
+  refundMatchedAccountId?: string | null;
 }
 
 export function useBudget(year: number, month: number) {
