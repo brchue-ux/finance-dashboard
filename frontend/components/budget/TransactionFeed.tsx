@@ -7,18 +7,11 @@ interface TransactionFeedProps {
   /** Transaction id to visually mark — set when arriving from a notable card. */
   highlightId?: string;
   /**
-   * When provided, rows become tappable to split. Only offered where a
-   * transaction has real context (per-account history), not on the blended
-   * Budget feed, where the same row appears without its account.
+   * When provided, tapping a row opens its action sheet (change category /
+   * split). One tap, one target — this replaced a nested category chip that
+   * competed with a tap-to-split row and was effectively undiscoverable.
    */
-  onSplit?: (txn: Transaction) => void;
-  /**
-   * When provided, the category becomes its own tappable chip. Kept separate
-   * from the row press so the split editor keeps the whole-row target it was
-   * verified with on-device — tapping the category to change the category is
-   * the direct mapping, and it needs no hidden gesture to discover.
-   */
-  onRecategorize?: (txn: Transaction) => void;
+  onPressTransaction?: (txn: Transaction) => void;
   /** Max rows to render. Must not be smaller than the caller's fetch limit,
    *  or a highlighted row can be fetched but never drawn. */
   limit?: number;
@@ -36,8 +29,7 @@ function fmt(amount: number) {
 export function TransactionFeed({
   transactions,
   highlightId,
-  onSplit,
-  onRecategorize,
+  onPressTransaction,
   limit = 30,
   onHighlightLayout,
 }: TransactionFeedProps) {
@@ -49,8 +41,8 @@ export function TransactionFeed({
       {transactions.slice(0, limit).map((txn) => (
         <Pressable
           key={txn.id}
-          onPress={onSplit ? () => onSplit(txn) : undefined}
-          disabled={!onSplit}
+          onPress={onPressTransaction ? () => onPressTransaction(txn) : undefined}
+          disabled={!onPressTransaction}
           onLayout={
             txn.id === highlightId && onHighlightLayout
               ? (e) => onHighlightLayout(e.nativeEvent.layout.y)
@@ -81,37 +73,8 @@ export function TransactionFeed({
               {txn.merchantName ?? txn.description}
             </Text>
             <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
-              {onRecategorize ? (
-                // Nested Pressable: RN gives the touch to the innermost
-                // responder, so this does not also open the split editor.
-                // Padded because the bare text is a ~12px-tall target.
-                <Pressable
-                  onPress={() => onRecategorize(txn)}
-                  hitSlop={8}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    paddingVertical: 3,
-                    paddingHorizontal: 7,
-                    marginVertical: 2,
-                    marginRight: 4,
-                    borderRadius: 10,
-                    borderWidth: 1,
-                    borderColor: COLORS.glassBorder,
-                  }}
-                >
-                  <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
-                    {txn.category ?? "uncategorized"}
-                  </Text>
-                  <Text style={{ color: COLORS.textMuted, fontSize: 9, marginLeft: 4 }}>▾</Text>
-                </Pressable>
-              ) : (
-                <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
-                  {txn.category ?? "uncategorized"}
-                </Text>
-              )}
               <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
-                · {txn.date}
+                {txn.category ?? "Uncategorized"} · {txn.date}
                 {txn.pending ? " · Pending" : ""}
               </Text>
             </View>
@@ -126,20 +89,16 @@ export function TransactionFeed({
           >
             {fmt(txn.amount)}
           </Text>
-          {/* Without this the row is silently tappable — there was no way to
-              discover the split editor existed. */}
-          {onSplit && (
+          {/* The chevron signals the row is tappable — without an affordance
+              the action sheet is as hidden as the old nested chip was. */}
+          {onPressTransaction && (
             <Text style={{ color: COLORS.textMuted, fontSize: 18, marginLeft: 6 }}>›</Text>
           )}
         </Pressable>
       ))}
-      {transactions.length > 0 && (onSplit || onRecategorize) && (
+      {transactions.length > 0 && onPressTransaction && (
         <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 10 }}>
-          {onSplit && onRecategorize
-            ? "Tap a category to move it to another envelope, or a transaction to split it."
-            : onSplit
-              ? "Tap a transaction to split it across envelopes."
-              : "Tap a category to move it to another envelope."}
+          Tap a transaction to change its category or split it.
         </Text>
       )}
     </View>

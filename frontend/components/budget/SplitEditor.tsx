@@ -136,7 +136,7 @@ export function SplitEditor({
               }}
             >
               <Text style={{ color: d.category ? COLORS.textPrimary : COLORS.textMuted, fontSize: 14 }}>
-                {d.category || "Choose envelope"}
+                {d.category || "Choose category"}
               </Text>
             </Pressable>
 
@@ -198,7 +198,7 @@ export function SplitEditor({
               ))}
               {envelopes.length === 0 && (
                 <Text style={{ color: COLORS.textMuted, fontSize: 13, padding: 12 }}>
-                  No envelopes yet — create some first.
+                  No categories yet — create some first.
                 </Text>
               )}
             </ScrollView>
@@ -247,7 +247,7 @@ export function SplitEditor({
       )}
       {!canSave && balanced && filled.length < 2 && (
         <Text style={{ color: COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
-          A split needs at least two envelopes.
+          A split needs at least two categories.
         </Text>
       )}
 

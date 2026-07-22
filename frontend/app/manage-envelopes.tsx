@@ -63,7 +63,7 @@ export default function ManageEnvelopesScreen() {
           setNewName("");
           setNewTarget("");
         },
-        onError: (e) => Alert.alert("Couldn’t create envelope", String(e)),
+        onError: (e) => Alert.alert("Couldn’t create category", String(e)),
       }
     );
   }
@@ -95,7 +95,7 @@ export default function ManageEnvelopesScreen() {
       <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }}>
         <Pressable onPress={() => router.back()} hitSlop={12} style={{ flexDirection: "row", alignItems: "center" }}>
           <Text style={{ color: COLORS.brandPurple, fontSize: 24, marginRight: 4 }}>‹</Text>
-          <GradientText style={{ fontSize: 20, fontWeight: "800" }}>Envelopes</GradientText>
+          <GradientText style={{ fontSize: 20, fontWeight: "800" }}>Categories</GradientText>
         </Pressable>
       </View>
 
@@ -107,7 +107,7 @@ export default function ManageEnvelopesScreen() {
             {envelopes.length === 0 && (
               <GlassCard style={{ marginBottom: 16 }}>
                 <Text style={{ color: COLORS.textPrimary, fontWeight: "600", fontSize: 15 }}>
-                  No envelopes yet
+                  No categories yet
                 </Text>
                 <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 6 }}>
                   Start from a default set of Canadian merchant categories, then
@@ -149,7 +149,7 @@ export default function ManageEnvelopesScreen() {
             {/* Add new */}
             <GlassCard style={{ marginTop: 8 }}>
               <Text style={{ color: COLORS.textPrimary, fontWeight: "600", fontSize: 15, marginBottom: 10 }}>
-                Add an envelope
+                Add a category
               </Text>
               <TextInput
                 value={newName}
@@ -168,7 +168,7 @@ export default function ManageEnvelopesScreen() {
               />
               <Pressable onPress={addEnvelope} disabled={create.isPending} style={{ marginTop: 12 }}>
                 <Text style={{ color: COLORS.brandPurple, fontWeight: "600", fontSize: 14 }}>
-                  {create.isPending ? "Adding…" : "Add envelope"}
+                  {create.isPending ? "Adding…" : "Add category"}
                 </Text>
               </Pressable>
             </GlassCard>
@@ -180,7 +180,7 @@ export default function ManageEnvelopesScreen() {
               </Text>
               <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 6 }}>
                 Categories are assigned when a transaction is imported, so rows
-                added before an envelope existed stay uncategorized until this runs.
+                added before a category existed stay uncategorized until this runs.
               </Text>
               <Pressable onPress={runRecategorize} disabled={recategorize.isPending} style={{ marginTop: 12 }}>
                 <Text style={{ color: COLORS.brandPurple, fontWeight: "600", fontSize: 14 }}>
@@ -283,12 +283,12 @@ function EnvelopeRow({
 
       {envelope.monthlyTarget <= 0 && (
         <Text style={{ color: COLORS.warning, fontSize: 12, marginTop: 8 }}>
-          No budget set — this envelope is excluded from budget totals.
+          No budget set — this category is excluded from budget totals.
         </Text>
       )}
       {envelope.categoryRules.length === 0 && (
         <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 6 }}>
-          No merchant rules — transactions won’t auto-match to this envelope.
+          No merchant rules — transactions won’t auto-match to this category.
         </Text>
       )}
     </GlassCard>

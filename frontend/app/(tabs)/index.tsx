@@ -22,6 +22,7 @@ import { LLMCards } from "@/components/budget/LLMCards";
 import { NotableTransactions } from "@/components/budget/NotableTransactions";
 import { TransactionFeed } from "@/components/budget/TransactionFeed";
 import { CategoryPicker } from "@/components/budget/CategoryPicker";
+import { TransactionActionSheet } from "@/components/budget/TransactionActionSheet";
 import { ConversationSheet } from "@/components/llm/ConversationSheet";
 import { COLORS } from "@/constants/theme";
 import {
@@ -57,6 +58,9 @@ export default function BudgetScreen() {
   const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
   const [flash, setFlash] = useState<string | null>(null);
   const [recategorizing, setRecategorizing] = useState<Transaction | null>(null);
+  // Row tap opens this action sheet, which routes to the category picker. No
+  // split here — the blended Budget feed shows a row without its account.
+  const [actionsFor, setActionsFor] = useState<Transaction | null>(null);
 
   const visibleCards = (llmQuery.data?.cards ?? []).filter(
     (c) => !resolvedTitles.includes(c.title)
@@ -201,11 +205,11 @@ export default function BudgetScreen() {
             <Text style={{ fontSize: 16 }}>📥</Text>
             <View style={{ flex: 1 }}>
               <Text style={{ color: COLORS.warning, fontWeight: "600", fontSize: 13 }}>
-                {fmt(summary.unattributedSpent)} not in any envelope
+                {fmt(summary.unattributedSpent)} not in any category
               </Text>
               <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
                 {Math.round((summary.unattributedSpent / summary.totalOutflow) * 100)}% of this
-                month's spending — counted in your total, but in no envelope below.
+                month's spending — counted in your total, but in no category below.
               </Text>
             </View>
             <Text style={{ color: COLORS.textMuted, fontSize: 16 }}>›</Text>
@@ -226,10 +230,10 @@ export default function BudgetScreen() {
           <Pressable onPress={() => router.push("/manage-envelopes")}>
             <View style={{ padding: 16, borderRadius: 16, borderWidth: 1, borderColor: COLORS.glassBorder, backgroundColor: COLORS.glassBg }}>
               <Text style={{ color: COLORS.textPrimary, fontWeight: "600", fontSize: 15 }}>
-                Set up your envelopes
+                Set up your categories
               </Text>
               <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 6 }}>
-                Transactions stay uncategorized until at least one envelope exists.
+                Transactions stay uncategorized until at least one category exists.
               </Text>
             </View>
           </Pressable>
@@ -267,12 +271,37 @@ export default function BudgetScreen() {
 
         {/* Transaction feed */}
         {data?.transactions && (
-          <TransactionFeed transactions={data.transactions} onRecategorize={setRecategorizing} />
+          <TransactionFeed transactions={data.transactions} onPressTransaction={setActionsFor} />
         )}
       </ScrollView>
 
+      {/* Action sheet — one tap on a transaction opens this. On the blended
+          Budget feed only "Change category" is offered (no account context for
+          a split), so onSplit is omitted. */}
+      <Modal
+        visible={actionsFor !== null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setActionsFor(null)}
+      >
+        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
+          <View style={{ backgroundColor: COLORS.background, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+            {actionsFor && (
+              <TransactionActionSheet
+                transaction={actionsFor}
+                onChangeCategory={() => {
+                  setRecategorizing(actionsFor);
+                  setActionsFor(null);
+                }}
+                onClose={() => setActionsFor(null)}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {/* Category picker — the Budget screen is where a miscategorization is
-          most visible, since you are looking at the envelope it landed in. */}
+          most visible, since you are looking at the category it landed in. */}
       <Modal
         visible={recategorizing !== null}
         animationType="slide"

@@ -82,7 +82,7 @@ export function CategoryPicker({
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.background, padding: 16 }}>
       <Text style={{ color: COLORS.textPrimary, fontWeight: "700", fontSize: 18 }}>
-        Move to envelope
+        Change category
       </Text>
       <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 4 }} numberOfLines={2}>
         {description}
@@ -127,7 +127,7 @@ export function CategoryPicker({
 
           {envelopes.length === 0 && (
             <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 12 }}>
-              You have no envelopes yet. Create some on Manage Envelopes first.
+              You have no categories yet. Create some in Categories first.
             </Text>
           )}
         </ScrollView>

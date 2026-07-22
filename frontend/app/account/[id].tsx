@@ -13,6 +13,7 @@ import { TransactionFeed } from "@/components/budget/TransactionFeed";
 import { useAccountTransactions } from "@/hooks/useBanks";
 import { SplitEditor } from "@/components/budget/SplitEditor";
 import { CategoryPicker } from "@/components/budget/CategoryPicker";
+import { TransactionActionSheet } from "@/components/budget/TransactionActionSheet";
 import type { Transaction } from "@/hooks/useBudget";
 
 export default function AccountTransactionsScreen() {
@@ -26,6 +27,9 @@ export default function AccountTransactionsScreen() {
   const { data, isLoading, isError } = useAccountTransactions(id ?? "", PAGE);
   const [splitting, setSplitting] = useState<Transaction | null>(null);
   const [recategorizing, setRecategorizing] = useState<Transaction | null>(null);
+  // The transaction whose action sheet is open. Tapping a row opens this; the
+  // sheet then routes to the category or split editor below.
+  const [actionsFor, setActionsFor] = useState<Transaction | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   // Tinting a row that is off-screen is invisible; scroll it into view. Offset
@@ -71,8 +75,7 @@ export default function AccountTransactionsScreen() {
             <TransactionFeed
               transactions={data!.transactions}
               highlightId={highlight}
-              onSplit={setSplitting}
-              onRecategorize={setRecategorizing}
+              onPressTransaction={setActionsFor}
               limit={PAGE}
               onHighlightLayout={scrollToHighlight}
             />
@@ -84,6 +87,35 @@ export default function AccountTransactionsScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* Action sheet — the single entry point for a row tap. Routes to the
+          category picker or the split editor rather than making either a hidden
+          gesture. Split is offered here because this screen has account context. */}
+      <Modal
+        visible={actionsFor !== null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setActionsFor(null)}
+      >
+        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
+          <View style={{ backgroundColor: COLORS.background, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+            {actionsFor && (
+              <TransactionActionSheet
+                transaction={actionsFor}
+                onChangeCategory={() => {
+                  setRecategorizing(actionsFor);
+                  setActionsFor(null);
+                }}
+                onSplit={() => {
+                  setSplitting(actionsFor);
+                  setActionsFor(null);
+                }}
+                onClose={() => setActionsFor(null)}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* Split editor. Reached by tapping a row here rather than from the
           blended Budget feed, where a row appears without its account. */}
