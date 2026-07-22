@@ -10,7 +10,10 @@
  *     amount: string,                  // negative = debit (app convention)
  *     category?: string
  *   },
- *   negateAmounts?: boolean            // set when the source uses positive-=-debit
+ *   negateAmounts?: boolean,           // set when the source uses positive-=-debit
+ *   categoryMappings?: {               // user-confirmed from /preview (item 7):
+ *     [sourceCategory]: envelopeName   // file category → one of their envelopes
+ *   }
  * }
  */
 import { NextRequest, NextResponse } from "next/server";
@@ -18,17 +21,13 @@ import { requireUser } from "@/lib/auth-guard";
 import { z } from "zod";
 import { parseCsv } from "@/lib/import/csv";
 import { importRows, normalizeMappedRows } from "@/lib/import/pipeline";
+import { csvImportSchema } from "@/lib/import/csv-request";
+import { resolveCategoryAssignment } from "@/lib/budget/category-assignment";
+import { loadCategorizationContext } from "@/lib/budget/categorization-context";
 import { withJobRun } from "@/lib/jobs/job-runs";
 
-const bodySchema = z.object({
-  csv: z.string().min(1),
-  mapping: z.object({
-    date: z.string().min(1),
-    description: z.string().min(1),
-    amount: z.string().min(1),
-    category: z.string().optional(),
-  }),
-  negateAmounts: z.boolean().optional(),
+const bodySchema = csvImportSchema.extend({
+  categoryMappings: z.record(z.string(), z.string()).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -39,7 +38,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
   }
-  const { csv, mapping, negateAmounts } = parsed.data;
+  const { csv, mapping, negateAmounts, categoryMappings } = parsed.data;
 
   const rows = parseCsv(csv);
   const { normalized, errors, headerError } = normalizeMappedRows(rows, mapping, negateAmounts);
@@ -47,10 +46,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `CSV ${headerError}` }, { status: 400 });
   }
 
+  // Mapping targets are untrusted names — resolve each against the active
+  // envelopes BEFORE any write, storing the envelope's own spelling and
+  // normalizing keys so the file's casing can't dodge its mapping. A bad
+  // target is a 400, not a partially-mapped import.
+  let resolvedMappings: Record<string, string> | undefined;
+  if (categoryMappings && Object.keys(categoryMappings).length > 0) {
+    const { envelopes } = await loadCategorizationContext(authed.userId);
+    resolvedMappings = {};
+    for (const [source, target] of Object.entries(categoryMappings)) {
+      const resolved = resolveCategoryAssignment(target, envelopes);
+      if (!resolved.ok) {
+        return NextResponse.json(
+          { error: `mapping for "${source}": ${resolved.error}` },
+          { status: 400 }
+        );
+      }
+      resolvedMappings[source.trim().toLowerCase()] = resolved.category;
+    }
+  }
+
   const result = await withJobRun(
     "import_csv",
     async () => {
-      const res = await importRows(authed.userId, normalized);
+      const res = await importRows(authed.userId, normalized, undefined, resolvedMappings);
       return {
         result: res,
         metadata: { ...res, rowsInFile: rows.length - 1, unparseableRows: errors.length },

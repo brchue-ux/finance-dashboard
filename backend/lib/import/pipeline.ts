@@ -14,6 +14,7 @@ import { and, eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { categorize } from "@/lib/categorization";
 import { loadCategorizationContext } from "@/lib/budget/categorization-context";
+import { resolveImportCategory } from "@/lib/import/category-match";
 
 export interface NormalizedRow {
   date: string; // ISO 8601 YYYY-MM-DD
@@ -156,10 +157,18 @@ export function duplicateFilter(existingFingerprints: string[]): (fp: string) =>
   };
 }
 
+/**
+ * @param categoryMappings user-confirmed source-category → envelope mappings
+ *        from the import preview (item 7), keys normalized (trim+lowercase),
+ *        values already resolved to the envelope's own spelling by the route.
+ *        Mapped rows get `category_source = "manual"` — the mapping is the
+ *        user's explicit choice and must survive a bulk re-derive.
+ */
 export async function importRows(
   userId: string,
   rows: NormalizedRow[],
-  accountName?: string
+  accountName?: string,
+  categoryMappings?: Record<string, string>
 ): Promise<{ imported: number; duplicates: number; accountId: string }> {
   const accountId = await ensureManualAccount(userId, accountName);
   const now = Math.floor(Date.now() / 1000);
@@ -186,6 +195,20 @@ export async function importRows(
       continue;
     }
 
+    // A source-provided category goes through the resolver so a match modulo
+    // case/whitespace is stored under the envelope's own spelling — verbatim
+    // storage fragments an envelope's totals ("groceries" ≠ "Groceries" to
+    // every budget query). Applies to all import paths, not just CSV.
+    let category: string;
+    let categorySource: string | null = null;
+    if (row.category) {
+      const resolved = resolveImportCategory(row.category, parsedEnvelopes, categoryMappings);
+      category = resolved.category;
+      if (resolved.mapped) categorySource = "manual";
+    } else {
+      category = categorize(row.description, parsedEnvelopes, learnedRules);
+    }
+
     await db.insert(transactions).values({
       id: uuidv4(),
       userId,
@@ -195,7 +218,8 @@ export async function importRows(
       description: row.description.trim(),
       merchantName: null,
       amount: row.amount,
-      category: row.category ?? categorize(row.description, parsedEnvelopes, learnedRules),
+      category,
+      categorySource,
       pending: 0,
       createdAt: now,
     });
