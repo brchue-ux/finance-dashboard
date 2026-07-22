@@ -364,6 +364,11 @@ export const wealthsimpleConnections = sqliteTable("wealthsimple_connections", {
   snaptradeAuthToken: text("snaptrade_auth_token").notNull(), // AES-256-GCM encrypted
   status: text("status").notNull().default("active"), // "active" | "reconnect_required"
   lastSyncedAt: integer("last_synced_at"),
+  // JSON map of SnapTrade account id → user-chosen display name. SnapTrade
+  // does not carry Wealthsimple's own nicknames (every account arrives as
+  // "Wealthsimple Trade <TYPE>" + an internal slug), so the user names their
+  // accounts here, once, in-app.
+  accountNames: text("account_names"),
   createdAt: integer("created_at").notNull(),
 });
 

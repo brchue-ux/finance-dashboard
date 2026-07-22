@@ -102,6 +102,7 @@ export async function syncSnapTradeForUser(
       group.cash += accountCash;
       group.accountCount += 1;
       group.accounts.push({
+        id: account.id!,
         last4: (account.number ?? "").slice(-4),
         total: accountTotal,
         cash: accountCash,
@@ -191,9 +192,10 @@ export interface AccountGroup {
   /** True when value exists that no position itemizes — Wealthsimple robo. */
   managed: boolean;
   /** The individual accounts behind the rollup — the drill-down a tapped
-   *  group opens. Wealthsimple names every account identically, so the
-   *  number's last-4 is the only distinguishing label it offers. */
-  accounts: { last4: string; total: number; cash: number }[];
+   *  group opens. Wealthsimple names every account identically and exposes no
+   *  user nicknames, so `id` keys the user's own in-app names and last-4 of
+   *  the internal slug is the only default label available. */
+  accounts: { id: string; last4: string; total: number; cash: number }[];
 }
 
 /**

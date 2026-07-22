@@ -6,7 +6,9 @@ import {
   ScrollView,
   View,
   Text,
+  TextInput,
   Pressable,
+  Modal,
   RefreshControl,
   ActivityIndicator,
 } from "react-native";
@@ -17,7 +19,7 @@ import { HoldingRow } from "@/components/portfolio/HoldingRow";
 import { LLMCards } from "@/components/budget/LLMCards";
 import { ConversationSheet } from "@/components/llm/ConversationSheet";
 import { COLORS } from "@/constants/theme";
-import { usePortfolio, useSyncPortfolio, type AccountGroup } from "@/hooks/usePortfolio";
+import { usePortfolio, useSyncPortfolio, useRenameAccount, type AccountGroup } from "@/hooks/usePortfolio";
 import { useLLMCards, useForceReanalyze } from "@/hooks/useBudget";
 
 function money(n: number) {
@@ -42,6 +44,8 @@ const GROUP_LABELS: Record<string, string> = {
  * Legacy snapshots (pre-group object shape) fall back to the old chip row.
  */
 function AccountGroups({ accounts }: { accounts: AccountGroup[] | Record<string, number> }) {
+  // Rename sheet target — SnapTrade has no WS nicknames, so names are ours.
+  const [renameTarget, setRenameTarget] = useState<{ id: string; current: string } | null>(null);
   if (!Array.isArray(accounts)) {
     return (
       <View style={{ flexDirection: "row", gap: 16, marginTop: 12 }}>
@@ -72,9 +76,86 @@ function AccountGroups({ accounts }: { accounts: AccountGroup[] | Record<string,
       }}
     >
       {visible.map((g, i) => (
-        <GroupRow key={g.type} group={g} first={i === 0} />
+        <GroupRow key={g.type} group={g} first={i === 0} onRename={setRenameTarget} />
       ))}
+      <RenameSheet target={renameTarget} onClose={() => setRenameTarget(null)} />
     </View>
+  );
+}
+
+/** Bottom sheet naming one account. Content-sized root — no flex:1 in a
+ *  maxHeight-only sheet (the CategoryPicker collapse lesson). */
+function RenameSheet({
+  target,
+  onClose,
+}: {
+  target: { id: string; current: string } | null;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("");
+  const rename = useRenameAccount();
+  // Re-seed the input when a new target opens.
+  const [seededFor, setSeededFor] = useState<string | null>(null);
+  if (target && seededFor !== target.id) {
+    setName(target.current);
+    setSeededFor(target.id);
+  }
+
+  async function save() {
+    if (!target) return;
+    await rename.mutateAsync({ accountId: target.id, name: name.trim() });
+    onClose();
+  }
+
+  return (
+    <Modal visible={target !== null} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
+        <View
+          style={{
+            backgroundColor: COLORS.background,
+            borderTopLeftRadius: 20,
+            borderTopRightRadius: 20,
+            padding: 20,
+            paddingBottom: 32,
+          }}
+        >
+          <Text style={{ color: COLORS.textPrimary, fontWeight: "700", fontSize: 16 }}>
+            Name this account
+          </Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+            Wealthsimple doesn't share your nicknames, so this one lives in the app.
+          </Text>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder="e.g. Emergency fund"
+            placeholderTextColor={COLORS.textMuted}
+            maxLength={40}
+            autoFocus
+            style={{
+              color: COLORS.textPrimary,
+              fontSize: 16,
+              borderWidth: 1,
+              borderColor: COLORS.glassBorder,
+              borderRadius: 10,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              marginTop: 14,
+            }}
+          />
+          <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 18, marginTop: 16 }}>
+            <Pressable onPress={onClose} hitSlop={8}>
+              <Text style={{ color: COLORS.textMuted, fontSize: 15 }}>Cancel</Text>
+            </Pressable>
+            <Pressable onPress={save} disabled={rename.isPending} hitSlop={8}>
+              <Text style={{ color: COLORS.brandPurple, fontSize: 15, fontWeight: "700" }}>
+                {rename.isPending ? "Saving…" : "Save"}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -83,7 +164,15 @@ function AccountGroups({ accounts }: { accounts: AccountGroup[] | Record<string,
  * the one-press dive the rollup otherwise walls off. Wealthsimple gives all
  * its accounts the same name, so rows are labeled by the number's last-4.
  */
-function GroupRow({ group: g, first }: { group: AccountGroup; first: boolean }) {
+function GroupRow({
+  group: g,
+  first,
+  onRename,
+}: {
+  group: AccountGroup;
+  first: boolean;
+  onRename: (target: { id: string; current: string }) => void;
+}) {
   const [open, setOpen] = useState(false);
   const expandable = (g.accounts?.length ?? 0) > 0;
 
@@ -136,8 +225,9 @@ function GroupRow({ group: g, first }: { group: AccountGroup; first: boolean }) 
       </Pressable>
       {open &&
         g.accounts!.map((a) => (
-          <View
-            key={a.last4}
+          <Pressable
+            key={a.id}
+            onPress={() => onRename({ id: a.id, current: a.name ?? "" })}
             style={{
               flexDirection: "row",
               alignItems: "center",
@@ -147,10 +237,20 @@ function GroupRow({ group: g, first }: { group: AccountGroup; first: boolean }) 
               backgroundColor: "rgba(0,0,0,0.15)",
             }}
           >
-            <Text style={{ color: COLORS.textMuted, fontSize: 13, flex: 1 }}>
-              ···{a.last4}
+            <Text
+              style={{
+                color: a.name ? COLORS.textPrimary : COLORS.textMuted,
+                fontSize: 13,
+                flex: 1,
+              }}
+              numberOfLines={1}
+            >
+              {a.name ?? `···${a.last4}`}
               {a.cash > 0 && a.cash < a.total ? (
-                <Text style={{ fontSize: 12 }}>  {money(a.cash)} cash</Text>
+                <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>  {money(a.cash)} cash</Text>
+              ) : null}
+              {!a.name ? (
+                <Text style={{ color: COLORS.brandPurple, fontSize: 12 }}>  name ✎</Text>
               ) : null}
             </Text>
             <Text
@@ -162,7 +262,7 @@ function GroupRow({ group: g, first }: { group: AccountGroup; first: boolean }) 
             >
               {money(a.total)}
             </Text>
-          </View>
+          </Pressable>
         ))}
     </View>
   );

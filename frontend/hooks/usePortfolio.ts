@@ -26,8 +26,9 @@ export interface AccountGroup {
   /** Value with no itemized positions — run by Wealthsimple's robo. */
   managed: boolean;
   /** Individual accounts behind the rollup (drill-down). Absent on snapshots
-   *  taken before the field existed. */
-  accounts?: { last4: string; total: number; cash: number }[];
+   *  taken before the field existed. `name` is the user's own in-app label —
+   *  SnapTrade exposes no Wealthsimple nicknames, so we keep our own. */
+  accounts?: { id: string; last4: string; total: number; cash: number; name?: string | null }[];
 }
 
 export interface PortfolioResponse {
@@ -56,6 +57,16 @@ export function useSyncPortfolio() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.post("/api/snaptrade/sync"),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["portfolio"] }),
+  });
+}
+
+/** Name one Wealthsimple account in-app (empty name clears it). */
+export function useRenameAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { accountId: string; name: string }) =>
+      api.patch("/api/snaptrade/account-name", vars),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["portfolio"] }),
   });
 }

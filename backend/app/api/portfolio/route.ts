@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
         id: wealthsimpleConnections.id,
         status: wealthsimpleConnections.status,
         lastSyncedAt: wealthsimpleConnections.lastSyncedAt,
+        accountNames: wealthsimpleConnections.accountNames,
         createdAt: wealthsimpleConnections.createdAt,
       })
       .from(wealthsimpleConnections)
@@ -63,10 +64,25 @@ export async function GET(req: NextRequest) {
       ])
     : [[], []];
 
+  // User names applied at read time (snapshots are append-only history — a
+  // rename must retitle every past snapshot's view, so it can't live there).
+  const accountNames: Record<string, string> = wsConn[0]?.accountNames
+    ? JSON.parse(wsConn[0].accountNames)
+    : {};
+  const parsedAccounts = latestSnapshot ? JSON.parse(latestSnapshot.accounts) : null;
+  if (Array.isArray(parsedAccounts)) {
+    for (const group of parsedAccounts) {
+      for (const a of group.accounts ?? []) a.name = accountNames[a.id] ?? null;
+    }
+  }
+  // Strip the names map from the connection object — the client gets names
+  // in place on the accounts, not as a raw map.
+  const { accountNames: _names, ...connection } = wsConn[0] ?? {};
+
   return NextResponse.json({
-    connection: wsConn[0] ?? null,
+    connection: wsConn[0] ? connection : null,
     latestSnapshot: latestSnapshot
-      ? { ...latestSnapshot, accounts: JSON.parse(latestSnapshot.accounts) }
+      ? { ...latestSnapshot, accounts: parsedAccounts }
       : null,
     holdings: currentHoldings,
     snapshotHistory: snapshots.map((s) => ({
