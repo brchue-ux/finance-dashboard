@@ -29,6 +29,7 @@ import {
   bankBalanceSnapshots,
 } from "./schema";
 import { categorize } from "../lib/categorization";
+import { DEFAULT_ENVELOPE_GROUPS } from "../lib/budget/groups";
 import { eq } from "drizzle-orm";
 
 /** Marker embedded in generated rows so test data is identifiable at a glance. */
@@ -245,6 +246,7 @@ async function main() {
     categoryRules: JSON.stringify(e.rules),
     active: 1,
     sortOrder: i,
+    groupName: DEFAULT_ENVELOPE_GROUPS[e.name] ?? null,
     createdAt: now,
   }));
   await db.insert(budgetEnvelopes).values(envelopeRows);

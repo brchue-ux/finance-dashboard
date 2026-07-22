@@ -58,6 +58,13 @@ export async function PATCH(
   if (Number.isFinite(Number(body?.sortOrder))) {
     patch.sortOrder = Number(body.sortOrder);
   }
+  // Reassign a category to another group tile, or clear it to Ungrouped. An
+  // explicit null / "" is meaningful (move to Ungrouped), so it is handled
+  // distinctly from "field absent".
+  if (body?.groupName !== undefined) {
+    const g = typeof body.groupName === "string" ? body.groupName.trim() : "";
+    patch.groupName = g === "" ? null : g;
+  }
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: "No supported fields to update" }, { status: 400 });

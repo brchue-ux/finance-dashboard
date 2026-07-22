@@ -87,7 +87,22 @@ export interface EnvelopeSummary {
   unconfigured: boolean;
   remaining: number;
   overBudget: boolean;
+  /** 6d pace/typical fields — present only when the caller supplies the context
+   *  (the budget route does; unit callers and tests stay unchanged). */
+  monthFraction?: number;
+  /** allocated × monthFraction — the straight-line spend expected by now. */
+  expectedByNow?: number;
+  /** The user's own average monthly spend for this category; null with no history. */
+  typicalMonthly?: number | null;
+  /** How many months of history that average rests on. */
+  typicalMonths?: number;
   [key: string]: unknown;
+}
+
+/** Optional 6d context: how far through the month, and per-category history. */
+export interface PaceContext {
+  monthFraction: number;
+  typicalByCategory: Map<string, { monthlyAverage: number; monthsObserved: number }>;
 }
 
 /** Starting constant; expected to be tuned once there's real usage to tune against. */
@@ -98,7 +113,8 @@ export function summarizeEnvelopes(
   envelopes: EnvelopeRow[],
   allocations: AllocationRow[],
   monthTxns: TransactionRow[],
-  splits: SplitRow[] = []
+  splits: SplitRow[] = [],
+  pace?: PaceContext
 ): EnvelopeSummary[] {
   // A per-month allocation overrides the envelope's standing target, which is
   // how reallocation works without rewriting the envelope itself.
@@ -121,6 +137,20 @@ export function summarizeEnvelopes(
     const hasAllocation = allocationMap.has(env.id);
     const unconfigured = !hasAllocation && allocated <= 0;
 
+    // 6d — attached only when the caller passes pace context. Kept off the base
+    // shape so unit callers and existing tests are untouched.
+    const paceFields = pace
+      ? (() => {
+          const typical = pace.typicalByCategory.get(env.name);
+          return {
+            monthFraction: pace.monthFraction,
+            expectedByNow: allocated * pace.monthFraction,
+            typicalMonthly: typical?.monthlyAverage ?? null,
+            typicalMonths: typical?.monthsObserved ?? 0,
+          };
+        })()
+      : {};
+
     return {
       ...env,
       categoryRules: JSON.parse(env.categoryRules) as string[],
@@ -129,6 +159,7 @@ export function summarizeEnvelopes(
       unconfigured,
       remaining: unconfigured ? 0 : allocated - spent,
       overBudget: !unconfigured && spent > allocated,
+      ...paceFields,
     };
   });
 }

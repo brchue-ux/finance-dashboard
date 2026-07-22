@@ -328,6 +328,11 @@ export const budgetEnvelopes = sqliteTable("budget_envelopes", {
   categoryRules: text("category_rules").notNull(), // JSON: string[]
   active: integer("active").notNull().default(1),
   sortOrder: integer("sort_order").notNull().default(0),
+  // Parent group for the budget tab's app-folder-style tiles. Nullable: a
+  // category with no group falls into an "Ungrouped" tile. User-assignable, so
+  // it is a plain label, not a foreign key to a groups table — the set of
+  // groups is just the distinct names in use.
+  groupName: text("group_name"),
   createdAt: integer("created_at").notNull(),
 });
 

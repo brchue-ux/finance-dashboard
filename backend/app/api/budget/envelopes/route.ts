@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
       categoryRules: JSON.parse(e.categoryRules) as string[],
       active: e.active === 1,
       sortOrder: e.sortOrder,
+      groupName: e.groupName,
       createdAt: e.createdAt,
     })),
   });
@@ -83,6 +84,8 @@ export async function POST(req: NextRequest) {
     active: 1,
     sortOrder:
       Number.isFinite(Number(body?.sortOrder)) ? Number(body.sortOrder) : existing.length,
+    groupName:
+      typeof body?.groupName === "string" && body.groupName.trim() ? body.groupName.trim() : null,
     createdAt: Date.now(),
   };
 
@@ -97,6 +100,7 @@ export async function POST(req: NextRequest) {
         categoryRules,
         active: true,
         sortOrder: row.sortOrder,
+        groupName: row.groupName,
         createdAt: row.createdAt,
       },
     },

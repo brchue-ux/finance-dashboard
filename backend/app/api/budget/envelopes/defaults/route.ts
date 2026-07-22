@@ -17,6 +17,7 @@ import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { budgetEnvelopes } from "@/db/schema";
 import { DEFAULT_RULES } from "@/lib/categorization";
+import { DEFAULT_ENVELOPE_GROUPS } from "@/lib/budget/groups";
 import { eq } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
@@ -42,6 +43,7 @@ export async function POST(req: NextRequest) {
       categoryRules: JSON.stringify(rules),
       active: 1,
       sortOrder: existing.length + i,
+      groupName: DEFAULT_ENVELOPE_GROUPS[name] ?? null,
       createdAt: now,
     }));
 
