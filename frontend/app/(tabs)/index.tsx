@@ -18,22 +18,16 @@ import { GradientText } from "@/components/ui/GradientText";
 import { StatCard } from "@/components/ui/StatCard";
 import { MonthNav } from "@/components/budget/MonthNav";
 import { EnvelopeCard } from "@/components/budget/EnvelopeCard";
-import { LLMCards } from "@/components/budget/LLMCards";
+import { GroupTile } from "@/components/budget/GroupTile";
+import { PinnedInsight } from "@/components/budget/PinnedInsight";
 import { NotableTransactions } from "@/components/budget/NotableTransactions";
-import { TransactionFeed } from "@/components/budget/TransactionFeed";
-import { CategoryPicker } from "@/components/budget/CategoryPicker";
-import { TransactionActionSheet } from "@/components/budget/TransactionActionSheet";
+import { groupEnvelopes, UNGROUPED } from "@/lib/groups";
+import { EnvelopeDetailSheet } from "@/components/budget/EnvelopeDetailSheet";
+import { SwipeToDismiss } from "@/components/ui/SwipeToDismiss";
 import { ConversationSheet } from "@/components/llm/ConversationSheet";
 import { COLORS } from "@/constants/theme";
-import {
-  useBudget,
-  useSyncBudget,
-  useLLMCards,
-  useForceReanalyze,
-  useApplyReallocation,
-  type LLMCard,
-  type Transaction,
-} from "@/hooks/useBudget";
+import { useInsights, topCard } from "@/hooks/useInsights";
+import { useBudget, useSyncBudget, type BudgetEnvelope } from "@/hooks/useBudget";
 
 function fmt(n: number) {
   return `$${Math.abs(n).toFixed(0)}`;
@@ -48,44 +42,22 @@ export default function BudgetScreen() {
 
   const { data, isLoading, refetch } = useBudget(year, month);
   const syncMutation = useSyncBudget();
-  const llmQuery = useLLMCards("budget");
-  const reanalyze = useForceReanalyze("budget");
-  const applyReallocation = useApplyReallocation(year, month);
+  // Claude cards, shared with the full Insights screen (same resolved-state).
+  const insights = useInsights("budget", year, month);
 
-  // Card resolution lives here, not in the cached query: approving or
-  // dismissing shouldn't force a re-analysis, and the LLM cache is shared.
-  const [resolvedTitles, setResolvedTitles] = useState<string[]>([]);
-  const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
-  const [flash, setFlash] = useState<string | null>(null);
-  // One sheet, ONE open Modal — two overlapping Modals hang on Android. The
-  // blended Budget feed offers no split (a row here has no account), so the
-  // modes are just "actions" and "category".
-  const [sheet, setSheet] = useState<{ txn: Transaction; mode: "actions" | "category" } | null>(
-    null
-  );
-
-  const visibleCards = (llmQuery.data?.cards ?? []).filter(
-    (c) => !resolvedTitles.includes(c.title)
-  );
-
-  async function onApprove(card: LLMCard) {
-    setCardErrors((e) => ({ ...e, [card.title]: "" }));
-    try {
-      const res = await applyReallocation.mutateAsync(card);
-      // Only hide the card once the write succeeded — hiding on tap would make
-      // a rejected reallocation look applied.
-      setResolvedTitles((t) => [...t, card.title]);
-      setFlash(
-        `Moved $${res.amount.toFixed(2)} from ${res.from.name} ($${res.from.after.toFixed(0)} left budgeted) to ${res.to.name} ($${res.to.after.toFixed(0)}).`
-      );
-      await refetch();
-    } catch (err) {
-      setCardErrors((e) => ({
-        ...e,
-        [card.title]: err instanceof Error ? err.message : "Couldn't apply that change.",
-      }));
-    }
-  }
+  // The envelope trending-vs-typical detail (6d). Independent of the txn sheet —
+  // the two are never open at once, so they don't overlap.
+  const [envelopeDetail, setEnvelopeDetail] = useState<BudgetEnvelope | null>(null);
+  // Which group tile is zoomed into; null = the top-level grid of tiles. Kept as
+  // a name (not an index) so it survives a data refresh reordering the groups.
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  // Notable transactions is collapsed to a single row by default — it was a big
+  // part of the scroll. Expanded on demand.
+  const [notableExpanded, setNotableExpanded] = useState(false);
+  // Swiped-away (session-scoped) so the group tiles come up into full frame. The
+  // 💡 header icon still reaches the Insights screen after the pin is dismissed.
+  const [pinnedDismissed, setPinnedDismissed] = useState(false);
+  const [unattributedDismissed, setUnattributedDismissed] = useState(false);
 
   function prevMonth() {
     if (month === 1) { setYear(y => y - 1); setMonth(12); }
@@ -110,6 +82,19 @@ export default function BudgetScreen() {
   }
 
   const summary = data?.summary;
+
+  // Parent-group tiles, and the categories inside the one that's zoomed in.
+  const groups = data ? groupEnvelopes(data.envelopes) : [];
+  const openGroupEnvelopes =
+    openGroup !== null
+      ? (data?.envelopes ?? []).filter((e) => (e.groupName || UNGROUPED) === openGroup)
+      : [];
+  const notableCount = (data?.notableTransactions ?? []).reduce(
+    (n, c) => n + c.transactions.length,
+    0
+  );
+  // The single card pinned at the top; the rest live behind "N more" → Insights.
+  const pinned = topCard(insights.visibleCards);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
@@ -139,6 +124,34 @@ export default function BudgetScreen() {
             </Pressable>
             <Pressable onPress={() => router.push("/manage-envelopes")} hitSlop={10}>
               <Text style={{ fontSize: 20 }}>🗂️</Text>
+            </Pressable>
+            {/* Always-available entry to Insights — the way back after the pinned
+                card is swiped away. Badged with the open-card count. */}
+            <Pressable
+              onPress={() => router.push({ pathname: "/insights", params: { year, month } })}
+              hitSlop={10}
+            >
+              <Text style={{ fontSize: 20 }}>💡</Text>
+              {insights.visibleCards.length > 0 && (
+                <View
+                  style={{
+                    position: "absolute",
+                    top: -4,
+                    right: -6,
+                    minWidth: 15,
+                    height: 15,
+                    borderRadius: 8,
+                    paddingHorizontal: 3,
+                    backgroundColor: COLORS.brandPurple,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontSize: 9, fontWeight: "700" }}>
+                    {insights.visibleCards.length}
+                  </Text>
+                </View>
+              )}
             </Pressable>
             <Pressable onPress={() => router.push("/reports")} hitSlop={10}>
               <Text style={{ fontSize: 20 }}>📊</Text>
@@ -189,43 +202,36 @@ export default function BudgetScreen() {
             envelope grid below is the only place spending is itemised. It still
             reduces Saved, so leaving it unexplained makes the numbers look
             wrong rather than incomplete. Tapping goes where it gets fixed. */}
-        {summary && summary.unattributedSpent > 0 && (
-          <Pressable
-            onPress={() => router.push("/manage-envelopes")}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-              padding: 12,
-              marginBottom: 20,
-              borderRadius: 10,
-              backgroundColor: "rgba(245,158,11,0.08)",
-              borderWidth: 1,
-              borderColor: "rgba(245,158,11,0.25)",
-            }}
-          >
-            <Text style={{ fontSize: 16 }}>📥</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: COLORS.warning, fontWeight: "600", fontSize: 13 }}>
-                {fmt(summary.unattributedSpent)} not in any category
-              </Text>
-              <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
-                {Math.round((summary.unattributedSpent / summary.totalOutflow) * 100)}% of this
-                month's spending — counted in your total, but in no category below.
-              </Text>
-            </View>
-            <Text style={{ color: COLORS.textMuted, fontSize: 16 }}>›</Text>
-          </Pressable>
+        {summary && summary.unattributedSpent > 0 && !unattributedDismissed && (
+          <SwipeToDismiss onDismiss={() => setUnattributedDismissed(true)}>
+            <Pressable
+              onPress={() => router.push("/manage-envelopes")}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                padding: 12,
+                paddingRight: 34,
+                marginBottom: 20,
+                borderRadius: 10,
+                backgroundColor: "rgba(245,158,11,0.08)",
+                borderWidth: 1,
+                borderColor: "rgba(245,158,11,0.25)",
+              }}
+            >
+              <Text style={{ fontSize: 16 }}>📥</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: COLORS.warning, fontWeight: "600", fontSize: 13 }}>
+                  {fmt(summary.unattributedSpent)} not in any category
+                </Text>
+                <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
+                  {Math.round((summary.unattributedSpent / summary.totalOutflow) * 100)}% of this
+                  month's spending — counted in your total, but in no category below.
+                </Text>
+              </View>
+            </Pressable>
+          </SwipeToDismiss>
         )}
-
-        {/* Envelope grid */}
-        {data?.envelopes.map((env) => (
-          <EnvelopeCard
-            key={env.id}
-            envelope={env}
-            onSetTarget={() => router.push("/manage-envelopes")}
-          />
-        ))}
 
         {/* No envelopes at all: budget math and categorization can't work yet. */}
         {data && data.envelopes.length === 0 && (
@@ -241,52 +247,135 @@ export default function BudgetScreen() {
           </Pressable>
         )}
 
-        {/* Notable transactions — deterministic, above the AI cards so the
-            free/always-current signal reads before the generated one. */}
-        <View style={{ marginTop: 12 }}>
-          <NotableTransactions categories={data?.notableTransactions ?? []} />
-        </View>
+        {/* ── Zoomed into one group: its categories only ─────────────────── */}
+        {data && data.envelopes.length > 0 && openGroup !== null && (
+          <>
+            <Pressable
+              onPress={() => setOpenGroup(null)}
+              hitSlop={8}
+              style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}
+            >
+              <Text style={{ color: COLORS.brandPurple, fontSize: 22, marginRight: 4 }}>‹</Text>
+              <Text style={{ color: COLORS.textPrimary, fontSize: 18, fontWeight: "800" }}>
+                {openGroup}
+              </Text>
+            </Pressable>
+            {openGroupEnvelopes.map((env) => (
+              <EnvelopeCard
+                key={env.id}
+                envelope={env}
+                onSetTarget={() => router.push("/manage-envelopes")}
+                onPress={() => setEnvelopeDetail(env)}
+              />
+            ))}
+          </>
+        )}
 
-        {/* LLM cards */}
-        <View style={{ marginTop: 8, marginBottom: 20 }}>
-          <LLMCards
-            cards={visibleCards}
-            lastAnalyzedAt={llmQuery.data?.lastAnalyzedAt ?? null}
-            // Cold start only — a background refresh keeps the existing cards
-            // visible rather than replacing them with a spinner.
-            isLoading={llmQuery.isLoading && !llmQuery.data}
-            isRefreshing={Boolean(llmQuery.data?.refreshing) || reanalyze.isPending}
-            onReanalyze={() => {
-              // A fresh analysis supersedes every prior verdict.
-              setResolvedTitles([]);
-              setCardErrors({});
-              setFlash(null);
-              reanalyze.mutate();
-            }}
-            busyTitle={applyReallocation.isPending ? applyReallocation.variables?.title : null}
-            errors={cardErrors}
-            flash={flash}
-            onApproveAction={onApprove}
-            onDismissAction={(card) => setResolvedTitles((t) => [...t, card.title])}
-          />
-        </View>
+        {/* ── Top level: pinned insight + group tiles + collapsed extras ──── */}
+        {data && data.envelopes.length > 0 && openGroup === null && (
+          <>
+            {/* Pinned Claude card — the most important one, actionable right here;
+                the rest are one tap away on the Insights screen. Swipe (or ✕) to
+                clear it so the tiles rise to full frame; the 💡 header icon brings
+                Insights back. */}
+            {pinned && !pinnedDismissed && (
+              <SwipeToDismiss onDismiss={() => setPinnedDismissed(true)}>
+                <PinnedInsight
+                  card={pinned}
+                  moreCount={insights.visibleCards.length - 1}
+                  busy={insights.busyTitle === pinned.title}
+                  error={insights.cardErrors[pinned.title]}
+                  flash={insights.flash}
+                  onApprove={() => insights.onApprove(pinned)}
+                  onDismiss={() => insights.onDismiss(pinned)}
+                  onOpenAll={() =>
+                    router.push({ pathname: "/insights", params: { year, month } })
+                  }
+                />
+              </SwipeToDismiss>
+            )}
 
-        {/* Transaction feed */}
-        {data?.transactions && (
-          <TransactionFeed
-            transactions={data.transactions}
-            onPressTransaction={(txn) => setSheet({ txn, mode: "actions" })}
-          />
+            {/* Group tiles — two per row, tap to zoom in */}
+            <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
+              {groups.map((g) => (
+                <GroupTile key={g.name} group={g} onPress={() => setOpenGroup(g.name)} />
+              ))}
+            </View>
+
+            {/* Notable transactions collapsed to one row — it was a big chunk of
+                the scroll; expand on demand. */}
+            {notableCount > 0 && (
+              <View style={{ marginTop: 8, marginBottom: 12 }}>
+                <Pressable
+                  onPress={() => setNotableExpanded((v) => !v)}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingVertical: 12,
+                    paddingHorizontal: 14,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: COLORS.glassBorder,
+                    backgroundColor: COLORS.glassBg,
+                  }}
+                >
+                  <Text style={{ color: COLORS.textPrimary, fontWeight: "600", fontSize: 14 }}>
+                    ⚡ Notable this month ({notableCount})
+                  </Text>
+                  <Text style={{ color: COLORS.textMuted, fontSize: 15 }}>
+                    {notableExpanded ? "Hide" : "Show"}
+                  </Text>
+                </Pressable>
+                {notableExpanded && (
+                  <View style={{ marginTop: 10 }}>
+                    <NotableTransactions
+                      categories={data?.notableTransactions ?? []}
+                      hideHeading
+                    />
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Transactions moved off the tab — one button, not an endless
+                inline feed that buried everything above it. */}
+            <Pressable
+              onPress={() =>
+                router.push({ pathname: "/transactions", params: { year, month } })
+              }
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingVertical: 14,
+                paddingHorizontal: 16,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: COLORS.glassBorder,
+                backgroundColor: COLORS.glassBg,
+                marginTop: 4,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <Text style={{ fontSize: 18 }}>🧾</Text>
+                <Text style={{ color: COLORS.textPrimary, fontWeight: "600", fontSize: 15 }}>
+                  All transactions
+                </Text>
+              </View>
+              <Text style={{ color: COLORS.textMuted, fontSize: 20 }}>›</Text>
+            </Pressable>
+          </>
         )}
       </ScrollView>
 
-      {/* One Modal, two modes. The action buttons switch mode in place rather
-          than opening a second Modal, which is what hung on Android. */}
+      {/* Envelope trending-vs-typical detail (6d) — its own Modal, only ever
+          open when a card is tapped, never at the same time as the txn sheet. */}
       <Modal
-        visible={sheet !== null}
+        visible={envelopeDetail !== null}
         animationType="slide"
         transparent
-        onRequestClose={() => setSheet(null)}
+        onRequestClose={() => setEnvelopeDetail(null)}
       >
         <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
           <View
@@ -297,19 +386,10 @@ export default function BudgetScreen() {
               maxHeight: "80%",
             }}
           >
-            {sheet && sheet.mode === "actions" && (
-              <TransactionActionSheet
-                transaction={sheet.txn}
-                onChangeCategory={() => setSheet({ txn: sheet.txn, mode: "category" })}
-                onClose={() => setSheet(null)}
-              />
-            )}
-            {sheet && sheet.mode === "category" && (
-              <CategoryPicker
-                transactionId={sheet.txn.id}
-                description={sheet.txn.merchantName ?? sheet.txn.description}
-                currentCategory={sheet.txn.category}
-                onDone={() => setSheet(null)}
+            {envelopeDetail && (
+              <EnvelopeDetailSheet
+                envelope={envelopeDetail}
+                onClose={() => setEnvelopeDetail(null)}
               />
             )}
           </View>
@@ -320,7 +400,7 @@ export default function BudgetScreen() {
         visible={chatOpen}
         onClose={() => setChatOpen(false)}
         view="budget"
-        initialCards={llmQuery.data?.cards}
+        initialCards={insights.llmQuery.data?.cards}
       />
     </SafeAreaView>
   );

@@ -26,23 +26,28 @@ function fmt(n: number) {
 
 interface NotableTransactionsProps {
   categories: NotableCategory[];
+  /** Suppress the internal heading when a caller (the collapsed row) supplies
+   *  its own — avoids a duplicate "Notable transactions" title. */
+  hideHeading?: boolean;
 }
 
-export function NotableTransactions({ categories }: NotableTransactionsProps) {
+export function NotableTransactions({ categories, hideHeading }: NotableTransactionsProps) {
   if (categories.length === 0) return null;
 
   return (
     <View style={{ marginBottom: 20 }}>
-      <Text
-        style={{
-          color: COLORS.textPrimary,
-          fontWeight: "700",
-          fontSize: 16,
-          marginBottom: 12,
-        }}
-      >
-        Notable transactions
-      </Text>
+      {!hideHeading && (
+        <Text
+          style={{
+            color: COLORS.textPrimary,
+            fontWeight: "700",
+            fontSize: 16,
+            marginBottom: 12,
+          }}
+        >
+          Notable transactions
+        </Text>
+      )}
       {categories.map((cat) => (
         <NotableCategoryCard key={cat.category} category={cat} />
       ))}

@@ -8,6 +8,8 @@ export interface Envelope {
   categoryRules: string[];
   active: boolean;
   sortOrder: number;
+  /** Parent group tile; null = Ungrouped. */
+  groupName?: string | null;
   createdAt: number;
 }
 

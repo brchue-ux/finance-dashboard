@@ -13,6 +13,16 @@ export interface BudgetEnvelope {
   unconfigured: boolean;
   categoryRules: string[];
   sortOrder: number;
+  /** Parent group tile this category rolls up into; null = Ungrouped. */
+  groupName?: string | null;
+  /** 6d — fraction of the viewed month elapsed (1 for a finished month). */
+  monthFraction?: number;
+  /** allocated × monthFraction: the straight-line spend expected by now. */
+  expectedByNow?: number;
+  /** The user's own average monthly spend here; null when there's no history. */
+  typicalMonthly?: number | null;
+  /** How many months of history the typical figure rests on. */
+  typicalMonths?: number;
 }
 
 export interface BudgetSummary {

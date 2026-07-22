@@ -22,6 +22,7 @@ import { useRouter } from "expo-router";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientText } from "@/components/ui/GradientText";
 import { COLORS } from "@/constants/theme";
+import { GROUP_ORDER, UNGROUPED, compareGroups } from "@/lib/groups";
 import {
   useEnvelopes,
   useCreateEnvelope,
@@ -47,6 +48,12 @@ export default function ManageEnvelopesScreen() {
   const envelopes = data?.envelopes ?? [];
   const active = envelopes.filter((e) => e.active);
   const inactive = envelopes.filter((e) => !e.active);
+
+  // The groups a category can be moved into: the seeded set plus any the user
+  // has already created, deduped and in tile order.
+  const availableGroups = [
+    ...new Set([...GROUP_ORDER, ...active.map((e) => e.groupName).filter((g): g is string => !!g)]),
+  ].sort(compareGroups);
 
   function addEnvelope() {
     const name = newName.trim();
@@ -130,6 +137,8 @@ export default function ManageEnvelopesScreen() {
               <EnvelopeRow
                 key={env.id}
                 envelope={env}
+                groups={availableGroups}
+                onSetGroup={(groupName) => update.mutate({ id: env.id, groupName })}
                 onSaveTarget={(monthlyTarget) =>
                   update.mutate({ id: env.id, monthlyTarget })
                 }
@@ -189,6 +198,24 @@ export default function ManageEnvelopesScreen() {
               </Pressable>
             </GlassCard>
 
+            {/* Suggested categories — derived from the user's own spending (6c) */}
+            <Pressable onPress={() => router.push("/suggested-categories")}>
+              <GlassCard style={{ marginTop: 12 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <View style={{ flex: 1, paddingRight: 12 }}>
+                    <Text style={{ color: COLORS.textPrimary, fontWeight: "600", fontSize: 15 }}>
+                      Suggested categories
+                    </Text>
+                    <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 6 }}>
+                      Categories grouped from your own spending, plus merchants that
+                      aren’t counted anywhere yet. Add what fits.
+                    </Text>
+                  </View>
+                  <Text style={{ color: COLORS.brandPurple, fontSize: 22 }}>›</Text>
+                </View>
+              </GlassCard>
+            </Pressable>
+
             {/* Learned rules — the corrections you promoted to standing rules */}
             <Pressable onPress={() => router.push("/manage-learned-rules")}>
               <GlassCard style={{ marginTop: 12 }}>
@@ -235,10 +262,14 @@ export default function ManageEnvelopesScreen() {
 
 function EnvelopeRow({
   envelope,
+  groups,
+  onSetGroup,
   onSaveTarget,
   onDeactivate,
 }: {
   envelope: Envelope;
+  groups: string[];
+  onSetGroup: (group: string | null) => void;
   onSaveTarget: (target: number) => void;
   onDeactivate: () => void;
 }) {
@@ -246,6 +277,7 @@ function EnvelopeRow({
   const parsed = Number(value);
   const dirty = value !== String(envelope.monthlyTarget);
   const valid = Number.isFinite(parsed) && parsed >= 0;
+  const currentGroup = envelope.groupName || UNGROUPED;
 
   return (
     <GlassCard style={{ marginBottom: 10 }}>
@@ -279,6 +311,35 @@ function EnvelopeRow({
             </Text>
           </Pressable>
         )}
+      </View>
+
+      {/* Group assignment — which parent tile this category lives under. */}
+      <View style={{ marginTop: 12 }}>
+        <Text style={{ color: COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Group</Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          {[...groups, UNGROUPED].map((g) => {
+            const selected = currentGroup === g;
+            return (
+              <Pressable
+                key={g}
+                onPress={() => onSetGroup(g === UNGROUPED ? null : g)}
+                hitSlop={4}
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: selected ? COLORS.brandPurple : COLORS.glassBorder,
+                  backgroundColor: selected ? "rgba(139,92,246,0.15)" : "transparent",
+                }}
+              >
+                <Text style={{ color: selected ? COLORS.brandPurple : COLORS.textMuted, fontSize: 12, fontWeight: selected ? "700" : "500" }}>
+                  {g}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
       {envelope.monthlyTarget <= 0 && (
