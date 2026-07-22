@@ -9,10 +9,11 @@
  * and there's no stable external ID like plaid_transaction_id.
  */
 import { db } from "@/db";
-import { bankAccounts, transactions, budgetEnvelopes } from "@/db/schema";
+import { bankAccounts, transactions } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { categorize } from "@/lib/categorization";
+import { loadCategorizationContext } from "@/lib/budget/categorization-context";
 
 export interface NormalizedRow {
   date: string; // ISO 8601 YYYY-MM-DD
@@ -173,18 +174,8 @@ export async function importRows(
     .where(eq(transactions.userId, userId));
   const isDuplicate = duplicateFilter(existing.map(fingerprint));
 
-  const envelopes = await db
-    .select({
-      name: budgetEnvelopes.name,
-      categoryRules: budgetEnvelopes.categoryRules,
-      sortOrder: budgetEnvelopes.sortOrder,
-    })
-    .from(budgetEnvelopes)
-    .where(and(eq(budgetEnvelopes.userId, userId), eq(budgetEnvelopes.active, 1)));
-  const parsedEnvelopes = envelopes.map((e) => ({
-    ...e,
-    categoryRules: JSON.parse(e.categoryRules) as string[],
-  }));
+  const { envelopes: parsedEnvelopes, learnedRules } =
+    await loadCategorizationContext(userId);
 
   let imported = 0;
   let duplicates = 0;
@@ -204,7 +195,7 @@ export async function importRows(
       description: row.description.trim(),
       merchantName: null,
       amount: row.amount,
-      category: row.category ?? categorize(row.description, parsedEnvelopes),
+      category: row.category ?? categorize(row.description, parsedEnvelopes, learnedRules),
       pending: 0,
       createdAt: now,
     });

@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
-import { budgetEnvelopes, transactions, transactionSplits } from "@/db/schema";
+import { budgetEnvelopes, learnedRules, transactions, transactionSplits } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 
 async function ownedEnvelope(req: NextRequest, id: string) {
@@ -63,14 +63,15 @@ export async function PATCH(
     return NextResponse.json({ error: "No supported fields to update" }, { status: 400 });
   }
 
-  // A rename must carry history with it. transactions.category and
-  // transaction_splits.category both store the envelope NAME, so updating the
-  // envelope alone orphans every past row: they keep the old name, match no
-  // active envelope, and silently drop out of budget math. Verified before
-  // fixing — renaming an envelope with $400 of spend reported $0 afterwards.
-  // The schema comment already promised past rows survive a rename; this makes
-  // that true. Renaming is how a user makes the app fit their own categories,
-  // so it must not cost them their history.
+  // A rename must carry history with it. transactions.category,
+  // transaction_splits.category and learned_rules.category all store the
+  // envelope NAME, so updating the envelope alone orphans every past row: they
+  // keep the old name, match no active envelope, and silently drop out of
+  // budget math. Verified before fixing — renaming an envelope with $400 of
+  // spend reported $0 afterwards. The schema comment already promised past rows
+  // survive a rename; this makes that true. Renaming is how a user makes the app
+  // fit their own categories, so it must not cost them their history — or, for a
+  // learned rule, silently stop firing because its target no longer exists.
   const oldName = found.row.name;
   const newName = patch.name;
   const renaming = typeof newName === "string" && newName !== oldName;
@@ -86,6 +87,10 @@ export async function PATCH(
         .update(transactionSplits)
         .set({ category: newName })
         .where(and(eq(transactionSplits.userId, found.userId), eq(transactionSplits.category, oldName)));
+      await tx
+        .update(learnedRules)
+        .set({ category: newName })
+        .where(and(eq(learnedRules.userId, found.userId), eq(learnedRules.category, oldName)));
     }
   });
 

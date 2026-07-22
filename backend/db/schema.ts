@@ -220,6 +220,51 @@ export const transactionSplits = sqliteTable(
   ]
 );
 
+// ── learned_rules ─────────────────────────────────────────────────────────────
+// The learning loop (build-reminders 6b). A user correction (6a) turned into a
+// standing rule. This is our stand-in for the merchant-identity + override layer
+// the big aggregators get from a population-scale model: we cannot infer a
+// merchant's boundary from a database we don't have, so the user declares it —
+// by approving a pattern they widened or narrowed against a live catch count —
+// and that declaration OVERRIDES the shipped seed rules (categorize() consults
+// these first). A user's correction is authoritative; a shipped guess is not.
+//
+// Kept in its own table, not appended to an envelope's category_rules, for two
+// reasons the array cannot serve: these must win over seed rules regardless of
+// which rule is longer (precedence is by SOURCE, not specificity), and they
+// carry provenance — what taught them, and what the user agreed to at the time.
+export const learnedRules = sqliteTable(
+  "learned_rules",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id),
+    // Matched against a normalized description with the same machinery as a seed
+    // rule (lib/categorization.ts). This is the user-declared merchant identity.
+    pattern: text("pattern").notNull(),
+    // Envelope NAME, matching transactions.category — categories are referenced
+    // by name throughout, so a learned rule survives an envelope rename via the
+    // same cascade that rewrites transactions.category (see envelopes/[id]).
+    category: text("category").notNull(),
+    // Which correction taught this, so the rule is traceable and the UI can say
+    // "learned from <merchant>". Nullable: the teaching row may later be deleted,
+    // but the rule it taught outlives it.
+    learnedFromTransactionId: text("learned_from_transaction_id"),
+    // The catch count the user saw when they approved the rule — an audit of what
+    // they actually agreed to, so a later "why did this grab 40 rows?" has an
+    // answer that isn't a guess.
+    catchesAtCreation: integer("catches_at_creation"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    index("idx_learned_rules_user").on(t.userId), // load a user's rules for categorize
+    // One category per pattern per user: re-teaching the same pattern updates the
+    // target rather than leaving two rules fighting over the same rows.
+    uniqueIndex("uq_learned_rules_user_pattern").on(t.userId, t.pattern),
+  ]
+);
+
 // ── budget_envelopes ──────────────────────────────────────────────────────────
 export const budgetEnvelopes = sqliteTable("budget_envelopes", {
   id: text("id").primaryKey(),

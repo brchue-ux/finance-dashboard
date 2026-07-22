@@ -3,11 +3,12 @@
  * nightly 2am job (spec §7). Records itself in job_runs.
  */
 import { db } from "@/db";
-import { bankConnections, bankAccounts, transactions, budgetEnvelopes } from "@/db/schema";
+import { bankConnections, bankAccounts, transactions } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { decrypt } from "@/lib/crypto";
 import { plaidClient } from "@/lib/plaid";
 import { categorize } from "@/lib/categorization";
+import { loadCategorizationContext } from "@/lib/budget/categorization-context";
 import { syncAccountsForConnection } from "@/lib/plaid-accounts";
 import { startJobRun, finishJobRun } from "@/lib/jobs/job-runs";
 import { v4 as uuidv4 } from "uuid";
@@ -24,19 +25,8 @@ export async function syncPlaidForUser(
     .from(bankConnections)
     .where(and(eq(bankConnections.userId, userId), eq(bankConnections.status, "active")));
 
-  const envelopes = await db
-    .select({
-      name: budgetEnvelopes.name,
-      categoryRules: budgetEnvelopes.categoryRules,
-      sortOrder: budgetEnvelopes.sortOrder,
-    })
-    .from(budgetEnvelopes)
-    .where(and(eq(budgetEnvelopes.userId, userId), eq(budgetEnvelopes.active, 1)));
-
-  const parsedEnvelopes = envelopes.map((e) => ({
-    ...e,
-    categoryRules: JSON.parse(e.categoryRules) as string[],
-  }));
+  const { envelopes: parsedEnvelopes, learnedRules } =
+    await loadCategorizationContext(userId);
 
   let totalAdded = 0;
   const jobId = await startJobRun("plaid_sync", userId);
@@ -84,7 +74,7 @@ export async function syncPlaidForUser(
           }
           const accountId = existingAcct[0].id;
 
-          const category = categorize(txn.name, parsedEnvelopes);
+          const category = categorize(txn.name, parsedEnvelopes, learnedRules);
 
           // Free enrichment fields already in the /transactions/sync response —
           // captured per the capture-now rule (spec §4 transactions)

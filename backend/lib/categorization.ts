@@ -83,6 +83,18 @@ function ruleMatches(rule: string, tokenizedDescription: string): boolean {
 }
 
 /**
+ * Does `rule` apply to `description`? The single, exported answer to that
+ * question — the same normalize-then-match path `categorize` walks, minus the
+ * envelope loop. The learned-rule proposal engine (build-reminders 6b) counts
+ * catches with this so the preview a user approves and the categorization that
+ * later runs cannot disagree: if this says a rule catches a row, `categorize`
+ * will file that row under that rule (specificity ties aside).
+ */
+export function ruleCatches(rule: string, description: string): boolean {
+  return ruleMatches(rule, tokenize(normalizeDescription(description)));
+}
+
+/**
  * Returns the envelope name that matches, or "uncategorized".
  *
  * The most SPECIFIC rule wins, measured as the length of the rule's normalized
@@ -108,11 +120,37 @@ function ruleMatches(rule: string, tokenizedDescription: string): boolean {
  * "TACO BELL" ahead of Utilities' "BELL " — token matching already prevents
  * that collision, and specificity now covers the ordering concern too.
  */
+/**
+ * A user's own learned rule (build-reminders 6b): a pattern the user declared,
+ * and the envelope it should file into. Consulted ahead of the seed rules.
+ */
+export interface LearnedRule {
+  pattern: string;
+  category: string;
+}
+
 export function categorize(
   description: string,
-  envelopes: Envelope[]
+  envelopes: Envelope[],
+  learnedRules: LearnedRule[] = []
 ): string {
   const haystack = tokenize(normalizeDescription(description));
+
+  // Layer 2 — the user's own corrections — outranks the shipped rules entirely.
+  // A learned rule that matches wins over ANY seed rule, however specific the
+  // seed rule is, because a correction is authoritative and a shipped guess is
+  // not. Within the learned set the same most-specific-wins tie-break applies,
+  // so a user's "AMZN MKTP CA" still beats their broader "AMZN". Only if no
+  // learned rule matches do we fall through to the seed rules below.
+  let bestLearned: { category: string; specificity: number } | null = null;
+  for (const lr of learnedRules) {
+    if (!ruleMatches(lr.pattern, haystack)) continue;
+    const specificity = tokenize(lr.pattern).length;
+    if (!bestLearned || specificity > bestLearned.specificity) {
+      bestLearned = { category: lr.category, specificity };
+    }
+  }
+  if (bestLearned) return bestLearned.category;
 
   const sorted = [...envelopes].sort((a, b) => a.sortOrder - b.sortOrder);
 

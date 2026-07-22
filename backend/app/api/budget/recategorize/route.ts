@@ -23,9 +23,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
-import { budgetEnvelopes, transactionSplits, transactions } from "@/db/schema";
+import { transactionSplits, transactions } from "@/db/schema";
 import { UNCATEGORIZED, categorize } from "@/lib/categorization";
-import { and, eq } from "drizzle-orm";
+import { loadCategorizationContext } from "@/lib/budget/categorization-context";
+import { eq } from "drizzle-orm";
 import { withJobRun } from "@/lib/jobs/job-runs";
 
 export async function POST(req: NextRequest) {
@@ -36,26 +37,15 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const onlyUncategorized = body?.onlyUncategorized !== false;
 
-  const envelopes = await db
-    .select({
-      name: budgetEnvelopes.name,
-      categoryRules: budgetEnvelopes.categoryRules,
-      sortOrder: budgetEnvelopes.sortOrder,
-    })
-    .from(budgetEnvelopes)
-    .where(and(eq(budgetEnvelopes.userId, userId), eq(budgetEnvelopes.active, 1)));
+  const { envelopes: parsedEnvelopes, learnedRules } =
+    await loadCategorizationContext(userId);
 
-  if (envelopes.length === 0) {
+  if (parsedEnvelopes.length === 0) {
     return NextResponse.json(
       { error: "No active envelopes — create envelopes before recategorizing" },
       { status: 409 }
     );
   }
-
-  const parsedEnvelopes = envelopes.map((e) => ({
-    ...e,
-    categoryRules: JSON.parse(e.categoryRules) as string[],
-  }));
 
   const summary = await withJobRun(
     "recategorize",
@@ -95,7 +85,7 @@ export async function POST(req: NextRequest) {
           continue;
         }
         if (onlyUncategorized && t.category && t.category !== UNCATEGORIZED) continue;
-        const next = categorize(t.description, parsedEnvelopes);
+        const next = categorize(t.description, parsedEnvelopes, learnedRules);
         if (next !== t.category) changes.push({ id: t.id, to: next });
       }
 

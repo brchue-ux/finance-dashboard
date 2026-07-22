@@ -54,6 +54,49 @@ describe("categorize — bugs found against real transaction data", () => {
   });
 });
 
+// build-reminders 6b. A learned rule is the user's own correction promoted to a
+// standing rule; it must override the shipped seed rules, which is the whole
+// point — the app guessed wrong and the user said otherwise.
+describe("categorize — learned rules override the seed rules", () => {
+  it("files a merchant the user has re-taught, against the seed guess", () => {
+    // Seed rules file Tim Hortons under Restaurants. A user who tracks it some
+    // other way re-files one; the learned rule must override the seed guess.
+    const learned = [{ pattern: "TIM HORTONS", category: "Groceries" }];
+    expect(categorize("TIM HORTONS #2384 WELLAND", envelopes)).toBe("Restaurants");
+    expect(categorize("TIM HORTONS #2384 WELLAND", envelopes, learned)).toBe("Groceries");
+  });
+
+  it("wins even over a more specific seed rule", () => {
+    // Precedence is by SOURCE, not length: a short learned pattern still beats a
+    // longer seed rule. "UBER EATS" (seed, Restaurants) is more specific than the
+    // learned "UBER", yet the user's correction rules.
+    const learned = [{ pattern: "UBER", category: "Transport" }];
+    expect(categorize("UBER CANADA/UBEREATS TORONTO", envelopes, learned)).toBe("Transport");
+  });
+
+  it("applies most-specific-wins within the learned set", () => {
+    // A user can hold both a broad and a narrow learned rule; the narrower one
+    // takes the rows it names, the broad one keeps the rest.
+    const learned = [
+      { pattern: "UBER", category: "Transport" },
+      { pattern: "UBER EATS", category: "Restaurants" },
+    ];
+    expect(categorize("UBER CANADA/UBEREATS TORONTO", envelopes, learned)).toBe("Restaurants");
+    expect(categorize("UBER* TRIP TORONTO", envelopes, learned)).toBe("Transport");
+  });
+
+  it("falls through to the seed rules when no learned rule matches", () => {
+    const learned = [{ pattern: "AMZN MKTP CA", category: "Groceries" }];
+    expect(categorize("TIM HORTONS #2384 WELLAND", envelopes, learned)).toBe("Restaurants");
+  });
+
+  it("is a no-op when the learned set is empty — the default", () => {
+    expect(categorize("TACO BELL WELLAND, ON", envelopes, [])).toBe(
+      categorize("TACO BELL WELLAND, ON", envelopes)
+    );
+  });
+});
+
 describe("categorize — regression guards", () => {
   // A punctuation-stripping matcher fixed the cases above but made "BELL"
   // match inside unrelated words. Aggregate counts made that look like an
