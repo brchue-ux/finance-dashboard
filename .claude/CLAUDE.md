@@ -8,24 +8,66 @@
 <!-- ▛▀▀ CURRENT STATE — READ THIS FIRST, IT IS THE AUTHORITATIVE TRUTH ▀▀▜ -->
 <!-- Everything BELOW this block is historical layering kept for context.    -->
 <!-- If this block and anything below disagree, THIS BLOCK WINS.             -->
-<!-- Last updated: 2026-07-21 (first real device tap-through; nightly batch repaired; LLM cost -81% and latency -80%; native session-cookie hijack fixed; CSV import verified working + sign-inversion guard; real 16-envelope taxonomy applied to local.db, 24%->92% coverage). -->
+<!-- Last updated: 2026-07-21 (LATEST: 6b learning loop COMPLETE end-to-end — store + matcher precedence + endpoints + after-correction proposal UI + management screen + append-only categorization_events training log. Prior: real multi-account data; transfer/income fix; 6a; import dedup; coverage; 6b merchant-normalization foundation). -->
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 
-## ⇒ START HERE — Finance Dashboard current state (2026-07-21, later)
+## ⇒ START HERE — Finance Dashboard current state (2026-07-21, latest session)
 
-**Phase: working `build-reminders.md` items 5–10 in dependency order. Four done (8, uncategorized accounting, 10, 5-engine); items 6a, 6b, 7, 6c, 6d remain. Item 9 is gated on a live brokerage connect.**
+**Phase: `build-reminders.md` item 6. 6b LEARNING LOOP IS DONE this session (see below). Previously done: 6a, the transfer/income fix, the import-dedup fix, the coverage concept, 6b's merchant-normalization foundation. REMAINING: 6c, 6d, item 7; refunds-still-counted-as-income (~$3.1k, noted not done). Item 9 gated on live brokerage connect; item 5 region/currency deferred. NEXT ACTION: user runs the in-app test of the 6b correction→propose→save→manage flow on their device (frontend is tsc-clean but NOT runtime-verified — no Expo/device in Claude's env).**
 
-**PUSH-STATE: `origin/main` = `816e8f9` (the earlier 9 were pushed this session). FOUR commits are LOCAL-ONLY and unpushed** — `7b52dc1` auth guard, `00f13dd` uncategorized accounting, `81f8c7d` fixture rebuild, `d92606b` categorization specificity. Working tree clean. **Verify with `git ls-remote` before trusting any push claim — this file was wrong about it twice, and was wrong again this session (it said SIX unpushed when there were NINE).**
+**PUSH-STATE: `origin/main` = `4bb7818`. ELEVEN commits are LOCAL-ONLY and unpushed** — 7 prior (`068d4a6` gitignore, `0b24ab8` schema, `1e704b4` 6a, `9824800` transfer/income, `a67c004` import dedup, `3cb061e` merchant normalization, `c4a5bda` coverage) plus 4 this session: `230dc86` 6b backend loop, `ad9c24e` 6b proposal UI, `04a6f65` 6b management screen, `3f7fd9d` categorization_events log. Working tree clean except this CLAUDE.md. **Nothing pushed — the user has not asked. Verify with `git ls-remote` before trusting any push claim — this file has been wrong about it repeatedly.**
 
-### The ordering being worked, and why it is this order
+### REAL DATA now lives in `local.db` — 3,920 transactions across 8 accounts
 
-Seams and instrumentation before features, so later items don't need retrofitting:
+The app was running on ONE account (RBC Visa CSV) which made credit-card payments look like income. This session ingested the rest. Files live in `Transactions/` (whole folder now gitignored — RBC export carries the full card number in every row). All imported through the real `lib/import` pipeline, not shortcuts; every step backed up to `~/.secrets/local-db-backups/` first.
 
-1. **Item 8 — DONE.** Had to be first: there was no auth seam at all, so every route built later would have needed retrofitting.
-2. **Uncategorized accounting — DONE.** Not on the original list. It is the *measuring instrument* for items 5/6/7 — fixing categorization coverage is unverifiable while the budget silently drops uncategorized spend.
-3. **Item 10 — DONE.** The fixture everything after it is verified against.
-4. **Item 5 (engine half) — DONE.** Had to land before 6b, which grows the rule set and multiplies ordering collisions.
-5. **Item 6a → 6b → 7 → 6c → 6d — REMAINING.** 6a before 6b (a correction is the training signal); 7 reuses 6a's picker; 6c consumes 6b's merchant data; 6d is a UX call on top of 6c's taxonomy.
+- **RBC Visa** 1,754 · **Wealthsimple RESP** 997 · **Tangerine Chequing** 521 · **Wealthsimple Chequing** 499 · **Wealthsimple TFSA** 82 · **Tangerine Money-Back Credit Card** 60 · **Wealthsimple Non-registered** 5 · **Wealthsimple FHSA** 2.
+- **828 rows flagged as transfers, 980 as out-of-coverage, 2,394 counted in budget totals.**
+- Real budget now reads sanely: 2026-06 **$10,615 in / $11,110 out**; 2026-03 is the high month ($19,816 in) — **confirmed a bonus** (single $9,329 STERICYCLE deposit on the employer line, govt deposit was $244), not a tax refund.
+
+### The transfer/income fix (largest thing this session, NOT on the 5–10 list)
+
+The app decided what a transaction *was* from one fact — sign of the amount. Positive = income, negative = spending. On real data that was wrong about MOST of the money: paying a credit card is a positive row on the card and a negative row on chequing (one event, two sides). $90,197 of phantom "income" on the Visa alone; `saved` inherited it and stayed plausible while both halves were wrong. **Fix: a transfer is neither earning nor spending, dropped once at each summarize entry rather than patched into each total.** `lib/budget/transfers.ts`; `withoutTransfers` became `budgetRows` and now excludes for TWO reasons (transfer OR out-of-coverage). Patterns are per-user PROPOSALS, NOT shipped defaults (`SUGGESTED_TRANSFER_PATTERNS`); bare "Bill Payment" deliberately not matched (covers city tax/gas/phone — real spending). `/api/reports` got the same filter or the two screens disagree.
+
+- **`coverage` column**: Wealthsimple history reaches 2021; banks start 2025-05. A 2023 month with only a $40 dividend reads as wildly profitable. Out-of-coverage rows are stored + categorized + visible in their account, just never summed. Per the user: uncorroborated history goes "off to the side."
+- **Investment vs cash split**: Wealthsimple's 1,546 trade rows are NEVER imported (1,500 BUYs = −$77,765 would be phantom spending — buying an ETF in a TFSA doesn't leave the household). Only Dividend/Interest/Grant/Fee/Tax count; MoneyMovement rows imported but flagged transfer (bank side already counted). One app account per WS account (RESP ≠ TFSA). Export's last line is a footer ("As of …"), filtered explicitly.
+- **STILL income but shouldn't be: refunds** (~$3.1k Amazon/RONA returns). Different, smaller fix — a refund should reduce its envelope, not add to earnings. Noted, not done.
+
+### 6a — per-transaction recategorize (DONE, `1e704b4`)
+
+`PATCH /api/transactions/:id` resolves the submitted name against the user's ACTIVE envelopes and stores the envelope's OWN spelling (`category` holds a name, not an id — "groceries" verbatim would fragment Groceries' totals). **409 on split transactions** (attribution comes from splits; a parent edit moves no money). `category_source` = `manual`/`rule`/NULL protects a hand-set category from a bulk re-derive — the docstring already promised that but it only held on the default path; proven both ways on real data. Frontend: category becomes a tappable chip, row press still opens the split editor. `lib/budget/category-assignment.ts` is the pure resolver.
+
+### Import dedup fix (`a67c004`) — was silently destroying real data
+
+Duplicate detection tested PRESENCE, so three separate $50 transfers on one day were indistinguishable from one transfer imported thrice — kept one, **dropped 74 real rows worth $7,294** on the chequing import. Fixed to compare COUNTS (`duplicateFilter`, pure + tested): re-importing a file stays idempotent, genuine repeats land. File-by-file import is load-bearing: identical rows WITHIN a file are real repeats; identical rows ACROSS files (Money-Back card exports overlapped on one statement) are the same event exported twice — only the file boundary distinguishes them. Imports can target a named account (`ensureManualAccount(userId, name)`) — every CSV used to funnel into one bucket, merging chequing and Visa into one "account" and hiding the transfers between them.
+
+### 6b foundation — merchant normalization (DONE, `3cb061e`)
+
+A learning loop keyed on merchant is worthless if one merchant makes hundreds of keys. `normalizeDescription` now strips per-order ids (`AMZN MKTP CA*097ZX38Y3` — Amazon was 173 merchants) and store codes with a space after `#` (`BOSTON PIZZA # 507`). **Distinct merchants 538 → 365.** The order-id strip REQUIRES A DIGIT in the run: a first attempt ate `BAM*STEM CAMP` (a $1,687 kids' camp) because many processors put the real merchant name after the asterisk — **ONE changed row in 2,335, found only by a row-by-row diff of every transaction; the aggregate looked like a clean win** ([[feedback-aggregates-mask-regressions]]). Re-categorising all 2,335 now produces ZERO changes.
+
+### 6b LEARNING LOOP — DONE this session (4 commits above)
+
+The full loop, built the industry way (we can't infer a merchant's boundary from a population DB we don't have, so the USER declares it — the aggregators' merchant-identity decision, made by the person):
+
+- **Proposal engine** `lib/budget/rule-proposal.ts` (pure, mutation-proven): default proposed pattern = the normalized description (deliberately narrow). Reports `catches` broken down by the envelope each caught row sits in NOW (`byCurrentCategory`) — the real safety check, not a bare count ("9 uncategorized, 3 already in Restaurants — will move"). A test pins the rejected `BILL PAYMENT`-prefix shortcut catching all payees so it can't come back.
+- **Matcher precedence** `categorize(desc, envelopes, learnedRules=[])`: learned rules win over ANY seed rule (precedence by SOURCE, not specificity); most-specific-wins WITHIN the learned set. Shared `ruleCatches` predicate so preview and the real matcher can't disagree. Default `[]` = existing callers are byte-for-byte no-ops.
+- **Store + durability** `learned_rules` table + `loadCategorizationContext` threads the learned set through ALL THREE categorize paths (import, Plaid sync, recategorize) — without that a later recategorize silently wipes learned results. Drops rules whose envelope was deactivated. Envelope rename cascade extended to `learned_rules.category`.
+- **Endpoints** `app/api/budget/learned-rules/`: POST preview (default proposal or live widen/narrow count), POST save (upsert + back-fill history; `refileRowsMatching` — saving and undoing are the same op with a different learned set; manual+split rows never touched), GET list, DELETE :id (removes AND undoes). Verified on a copy of real `local.db`: 316 Tim Hortons rows Restaurants → save → all Groceries → precedence holds → delete → all 316 revert exactly; manual guard exercised (315 refiled).
+- **Frontend**: `CategoryPicker` advances to `LearnedRuleProposal` after a real-envelope correction (widen/narrow box, debounced re-preview, impact summary); `app/manage-learned-rules.tsx` lists/removes rules, linked from Manage Envelopes.
+- **`categorization_events` — the durable training set** (`3f7fd9d`): append-only, never updated/deleted. A learned rule is a lossy compression of "this description → this category"; THIS logs the (raw description, normalized merchant handle, user's own category word, previous category, pattern) pair on every manual correction and rule save. It is what a future ML model / entity resolver / aggregator trains on and CANNOT be backfilled. `recordCategorizationEvent` is the one write path; import-time guesses are not labels and are not logged. The precedence architecture already lets a smarter engine slot in UNDER the user's corrections, so nothing learned gets wasted.
+
+Traps that shaped the design (still true): merchant boundary genuinely varies (2 words for Tim Hortons, 4 for "Bill Payment - Cogeco"); do NOT key on first-N-words — `BILL PAYMENT` → 9 payees, `EFT WITHDRAWAL` → hydro AND Wealthsimple, `INTERAC E-TRANSFER` → 10 people. Propose, never impose.
+
+### 6d framing — DECIDED by the user this session
+
+Default view = **pace against the month** (compare spend to how far through the month you are). Tapping an envelope opens the deeper dig = **trending vs typical** (hotter/cooler than the user's own normal). Targets are 17-month averages so half of months are "over" by definition — pass/fail is the wrong default. Build 6d with this two-layer shape.
+
+### SnapTrade / Wealthsimple research (this session)
+
+Free tier = 1 connected user, 5 brokerage connections, real-time, trading included, no contract — this user's exact case, so **$0**. Confirmed: balances, holdings, transactions, read-only. **UNRESOLVED**: every source names Wealthsimple *Trade* only, none mention Wealthsimple *Cash* — the one-minute check is the Broker Support Matrix (client-rendered Notion, won't WebFetch). BUT the user's own WS activities export DOES include a `Chequing` account_type, so the export path already covers cash and the paid connection is less pressing. Sources: snaptrade.com/pricing, /brokerage-integrations/wealthsimple-api, docs.snaptrade.com/docs/faq.
+
+---
+### (earlier 2026-07-21 session — historical, kept for context)
 
 **Item 5's region/currency half stays deferred** — single-user Canadian, that is a product trigger not a blocker.
 
