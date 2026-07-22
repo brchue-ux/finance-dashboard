@@ -9,6 +9,7 @@ import { decrypt } from "@/lib/crypto";
 import { plaidClient } from "@/lib/plaid";
 import { categorize } from "@/lib/categorization";
 import { loadCategorizationContext } from "@/lib/budget/categorization-context";
+import { matchesTransferPattern } from "@/lib/budget/transfers";
 import { syncAccountsForConnection } from "@/lib/plaid-accounts";
 import { startJobRun, finishJobRun } from "@/lib/jobs/job-runs";
 import { v4 as uuidv4 } from "uuid";
@@ -25,7 +26,7 @@ export async function syncPlaidForUser(
     .from(bankConnections)
     .where(and(eq(bankConnections.userId, userId), eq(bankConnections.status, "active")));
 
-  const { envelopes: parsedEnvelopes, learnedRules } =
+  const { envelopes: parsedEnvelopes, learnedRules, transferPatterns } =
     await loadCategorizationContext(userId);
 
   let totalAdded = 0;
@@ -75,6 +76,8 @@ export async function syncPlaidForUser(
           const accountId = existingAcct[0].id;
 
           const category = categorize(txn.name, parsedEnvelopes, learnedRules);
+          // Approved transfer patterns mark at write time (see pipeline.ts).
+          const transferSource = matchesTransferPattern(txn.name, transferPatterns) ? "rule" : null;
 
           // Free enrichment fields already in the /transactions/sync response —
           // captured per the capture-now rule (spec §4 transactions)
@@ -101,6 +104,7 @@ export async function syncPlaidForUser(
               merchantName: txn.merchant_name ?? null,
               amount: -(txn.amount), // Plaid: positive = debit; we: negative = debit
               category,
+              transferSource,
               pending: txn.pending ? 1 : 0,
               createdAt: now,
               ...enrichment,

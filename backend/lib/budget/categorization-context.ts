@@ -11,13 +11,18 @@
  * path honest about the learned set.
  */
 import { db } from "@/db";
-import { budgetEnvelopes, learnedRules } from "@/db/schema";
+import { budgetEnvelopes, learnedRules, transferPatterns } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { UNCATEGORIZED, type Envelope, type LearnedRule } from "@/lib/categorization";
 
 export interface CategorizationContext {
   envelopes: Envelope[];
   learnedRules: LearnedRule[];
+  /** The user's APPROVED transfer patterns. A row matching one is marked
+   *  transfer at write time (transferSource='rule') — the first production
+   *  writer for that column. Empty until the user approves patterns, so
+   *  nothing is ever excluded behind their back. */
+  transferPatterns: string[];
 }
 
 export async function loadCategorizationContext(
@@ -52,5 +57,10 @@ export async function loadCategorizationContext(
     (r) => r.category === UNCATEGORIZED || activeNames.has(r.category.trim().toLowerCase())
   );
 
-  return { envelopes, learnedRules: usable };
+  const patternRows = await db
+    .select({ pattern: transferPatterns.pattern })
+    .from(transferPatterns)
+    .where(eq(transferPatterns.userId, userId));
+
+  return { envelopes, learnedRules: usable, transferPatterns: patternRows.map((p) => p.pattern) };
 }

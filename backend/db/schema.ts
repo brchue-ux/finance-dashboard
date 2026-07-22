@@ -233,6 +233,28 @@ export const transactionSplits = sqliteTable(
 // reasons the array cannot serve: these must win over seed rules regardless of
 // which rule is longer (precedence is by SOURCE, not specificity), and they
 // carry provenance — what taught them, and what the user agreed to at the time.
+// ── transfer_patterns ─────────────────────────────────────────────────────────
+// The user's APPROVED transfer patterns — the first production writer for
+// transactions.transfer_source (the real data's 828 transfers were marked by
+// one-off scripts; SUGGESTED_TRANSFER_PATTERNS seeds the proposal UI, never
+// applied unapproved). Matching uses matchesTransferPattern (substring on the
+// shared normalization). On save, existing unmarked rows are retro-marked
+// 'rule'; manual marks are never touched by pattern changes.
+export const transferPatterns = sqliteTable(
+  "transfer_patterns",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id),
+    pattern: text("pattern").notNull(),
+    // The row-match count the user saw when approving — what they agreed to.
+    catchesAtCreation: integer("catches_at_creation"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [index("idx_transfer_patterns_user").on(t.userId)]
+);
+
 export const learnedRules = sqliteTable(
   "learned_rules",
   {

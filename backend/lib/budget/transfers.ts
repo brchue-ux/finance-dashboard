@@ -95,3 +95,36 @@ export const SUGGESTED_TRANSFER_PATTERNS: { pattern: string; why: string }[] = [
   { pattern: "TANGERINE CREDIT CARD PAYMENT", why: "Paying a Tangerine card" },
   { pattern: "WS INVESTMENTS", why: "Cash moving to or from Wealthsimple" },
 ];
+
+/**
+ * Rows a newly-saved pattern should mark: currently unmarked and matching.
+ * Manual marks are untouched by construction (they're not unmarked), and
+ * already-rule-marked rows are left alone so re-saving is idempotent.
+ */
+export function rowsToMark<T extends { description: string; transferSource?: string | null }>(
+  rows: T[],
+  pattern: string
+): T[] {
+  return rows.filter(
+    (r) => !r.transferSource && matchesTransferPattern(r.description, [pattern])
+  );
+}
+
+/**
+ * Rows a deleted pattern should unmark: rule-marked, matching the deleted
+ * pattern, and matching NO remaining saved pattern — deleting one pattern
+ * must not strip rows another still claims. Manual marks are never unmarked
+ * by pattern changes; a person's explicit decision outranks rule churn.
+ */
+export function rowsToUnmark<T extends { description: string; transferSource?: string | null }>(
+  rows: T[],
+  deletedPattern: string,
+  remainingPatterns: string[]
+): T[] {
+  return rows.filter(
+    (r) =>
+      r.transferSource === "rule" &&
+      matchesTransferPattern(r.description, [deletedPattern]) &&
+      !matchesTransferPattern(r.description, remainingPatterns)
+  );
+}

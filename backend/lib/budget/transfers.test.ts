@@ -3,6 +3,8 @@ import {
   matchesTransferPattern,
   budgetRows,
   SUGGESTED_TRANSFER_PATTERNS,
+  rowsToMark,
+  rowsToUnmark,
 } from "./transfers";
 import { summarizeTotals, summarizeEnvelopes, type TransactionRow } from "./summarize";
 
@@ -145,5 +147,34 @@ describe("transfers are excluded from every figure", () => {
     expect(totals.totalIncome).toBe(10000);
     expect(totals.totalOutflow).toBe(7200);
     expect(totals.saved).toBe(2800);
+  });
+});
+
+describe("rowsToMark / rowsToUnmark — pattern save/delete refile semantics", () => {
+  const rows = [
+    { id: "a", description: "Bill Payment - ROYAL BANK VISA-V", transferSource: null },
+    { id: "b", description: "Bill Payment - ROYAL BANK VISA-V", transferSource: "manual" },
+    { id: "c", description: "Bill Payment - ROYAL BANK VISA-V", transferSource: "rule" },
+    { id: "d", description: "TIM HORTONS #1234", transferSource: null },
+    { id: "e", description: "EFT Withdrawal to WS Investments", transferSource: "rule" },
+  ];
+
+  it("marks only unmarked matching rows — manual and already-rule rows untouched", () => {
+    expect(rowsToMark(rows, "Bill Payment - ROYAL BANK VISA").map((r) => r.id)).toEqual(["a"]);
+  });
+
+  it("unmarks rule rows the deleted pattern claimed, unless another pattern still does", () => {
+    expect(
+      rowsToUnmark(rows, "Bill Payment - ROYAL BANK VISA", ["EFT Withdrawal"]).map((r) => r.id)
+    ).toEqual(["c"]);
+    // With the same pattern still present in remaining, nothing unmarks.
+    expect(
+      rowsToUnmark(rows, "Bill Payment - ROYAL BANK VISA", ["ROYAL BANK VISA"])
+    ).toEqual([]);
+  });
+
+  it("never unmarks a manual row", () => {
+    const ids = rowsToUnmark(rows, "Bill Payment - ROYAL BANK VISA", []).map((r) => r.id);
+    expect(ids).not.toContain("b");
   });
 });

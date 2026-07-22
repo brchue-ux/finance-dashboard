@@ -14,6 +14,7 @@ import { and, eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { categorize } from "@/lib/categorization";
 import { loadCategorizationContext } from "@/lib/budget/categorization-context";
+import { matchesTransferPattern } from "@/lib/budget/transfers";
 import { resolveImportCategory } from "@/lib/import/category-match";
 
 export interface NormalizedRow {
@@ -183,7 +184,7 @@ export async function importRows(
     .where(eq(transactions.userId, userId));
   const isDuplicate = duplicateFilter(existing.map(fingerprint));
 
-  const { envelopes: parsedEnvelopes, learnedRules } =
+  const { envelopes: parsedEnvelopes, learnedRules, transferPatterns } =
     await loadCategorizationContext(userId);
 
   let imported = 0;
@@ -220,6 +221,9 @@ export async function importRows(
       amount: row.amount,
       category,
       categorySource,
+      // The user's approved transfer patterns mark at write time — a matching
+      // row is money moving between their own accounts, not income/spending.
+      transferSource: matchesTransferPattern(row.description, transferPatterns) ? "rule" : null,
       pending: 0,
       createdAt: now,
     });

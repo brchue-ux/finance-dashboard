@@ -163,6 +163,12 @@ export default function SettingsScreen() {
               CSV upload, Google Sheets or Excel
             </Text>
           </Pressable>
+          <Pressable onPress={() => router.push("/manage-transfer-patterns")} style={{ paddingVertical: 10 }}>
+            <Text style={{ color: COLORS.textPrimary, fontSize: 15 }}>Transfer patterns</Text>
+            <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+              Which descriptions mean money moving between your own accounts
+            </Text>
+          </Pressable>
         </GlassCard>
 
         {/* System */}
