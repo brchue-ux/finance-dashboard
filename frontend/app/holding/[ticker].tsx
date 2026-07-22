@@ -33,7 +33,10 @@ export default function HoldingDetailScreen() {
   const symbol = (ticker ?? "").toUpperCase();
 
   const { data: portfolio } = usePortfolio();
-  const { data: ohlcv, isLoading: chartLoading, isError: chartError } = useOHLCV(symbol, "1y");
+  // Range selection — the backend already accepts these; results are cached
+  // per (ticker, range) both server-side (ohlcv_cache) and in react-query.
+  const [range, setRange] = useState<"1mo" | "3mo" | "6mo" | "1y" | "5y">("1y");
+  const { data: ohlcv, isLoading: chartLoading, isError: chartError } = useOHLCV(symbol, range);
   const [chatOpen, setChatOpen] = useState(false);
   const [ma20, setMa20] = useState(false);
   const [ma50, setMa50] = useState(false);
@@ -112,6 +115,18 @@ export default function HoldingDetailScreen() {
         ) : (
           <ChartView bars={bars} overlay={overlay} ma20={ma20} ma50={ma50} rsi={rsi} macd={macd} height={chartHeight} />
         )}
+
+        {/* Range selector — one active at a time, unlike the indicator toggles. */}
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+          {(["1mo", "3mo", "6mo", "1y", "5y"] as const).map((r) => (
+            <Chip
+              key={r}
+              label={r === "1mo" ? "1M" : r === "3mo" ? "3M" : r === "6mo" ? "6M" : r === "1y" ? "1Y" : "5Y"}
+              active={range === r}
+              onPress={() => setRange(r)}
+            />
+          ))}
+        </View>
 
         {/* Indicator toggles: MA20/MA50 overlay the price; RSI/MACD add sub-panes. */}
         {bars.length > 0 && (
