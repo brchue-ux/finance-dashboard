@@ -11,10 +11,12 @@
  * mis-filed something has to be able to put it back in the review queue
  * instead of picking a wrong envelope to get out of the sheet.
  */
+import { useState } from "react";
 import { View, Text, Pressable, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { COLORS } from "@/constants/theme";
 import { useEnvelopes } from "@/hooks/useEnvelopes";
 import { useRecategorize } from "@/hooks/useRecategorize";
+import { LearnedRuleProposal } from "./LearnedRuleProposal";
 
 const UNCATEGORIZED = "uncategorized";
 
@@ -32,6 +34,10 @@ export function CategoryPicker({
   const { data, isLoading } = useEnvelopes();
   const recategorize = useRecategorize();
 
+  // Once a correction lands in a real envelope, this holds it and the sheet
+  // advances to "make this a rule?" (build-reminders 6b) instead of closing.
+  const [proposeFor, setProposeFor] = useState<string | null>(null);
+
   const envelopes = (data?.envelopes ?? []).filter((e) => e.active);
   const current = currentCategory ?? UNCATEGORIZED;
 
@@ -45,7 +51,14 @@ export function CategoryPicker({
     recategorize.mutate(
       { transactionId, category },
       {
-        onSuccess: onDone,
+        onSuccess: () => {
+          // Offer to make it a standing rule — but only when it landed in a
+          // real envelope. Promoting an "always uncategorize this" rule is a
+          // rare intent, not worth interrupting the common correction flow with
+          // a second step; sending someone back to the review queue just closes.
+          if (category.toLowerCase() === UNCATEGORIZED) onDone();
+          else setProposeFor(category);
+        },
         // Surfaces the server's own message rather than a generic failure —
         // the one a user will actually hit is the split-transaction 409, which
         // tells them where to go instead.
@@ -55,6 +68,12 @@ export function CategoryPicker({
             e instanceof Error ? e.message : "Something went wrong."
           ),
       }
+    );
+  }
+
+  if (proposeFor) {
+    return (
+      <LearnedRuleProposal transactionId={transactionId} category={proposeFor} onDone={onDone} />
     );
   }
 
