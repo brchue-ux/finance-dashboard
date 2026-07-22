@@ -57,10 +57,12 @@ export default function BudgetScreen() {
   const [resolvedTitles, setResolvedTitles] = useState<string[]>([]);
   const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
   const [flash, setFlash] = useState<string | null>(null);
-  const [recategorizing, setRecategorizing] = useState<Transaction | null>(null);
-  // Row tap opens this action sheet, which routes to the category picker. No
-  // split here — the blended Budget feed shows a row without its account.
-  const [actionsFor, setActionsFor] = useState<Transaction | null>(null);
+  // One sheet, ONE open Modal — two overlapping Modals hang on Android. The
+  // blended Budget feed offers no split (a row here has no account), so the
+  // modes are just "actions" and "category".
+  const [sheet, setSheet] = useState<{ txn: Transaction; mode: "actions" | "category" } | null>(
+    null
+  );
 
   const visibleCards = (llmQuery.data?.cards ?? []).filter(
     (c) => !resolvedTitles.includes(c.title)
@@ -271,42 +273,20 @@ export default function BudgetScreen() {
 
         {/* Transaction feed */}
         {data?.transactions && (
-          <TransactionFeed transactions={data.transactions} onPressTransaction={setActionsFor} />
+          <TransactionFeed
+            transactions={data.transactions}
+            onPressTransaction={(txn) => setSheet({ txn, mode: "actions" })}
+          />
         )}
       </ScrollView>
 
-      {/* Action sheet — one tap on a transaction opens this. On the blended
-          Budget feed only "Change category" is offered (no account context for
-          a split), so onSplit is omitted. */}
+      {/* One Modal, two modes. The action buttons switch mode in place rather
+          than opening a second Modal, which is what hung on Android. */}
       <Modal
-        visible={actionsFor !== null}
+        visible={sheet !== null}
         animationType="slide"
         transparent
-        onRequestClose={() => setActionsFor(null)}
-      >
-        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
-          <View style={{ backgroundColor: COLORS.background, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
-            {actionsFor && (
-              <TransactionActionSheet
-                transaction={actionsFor}
-                onChangeCategory={() => {
-                  setRecategorizing(actionsFor);
-                  setActionsFor(null);
-                }}
-                onClose={() => setActionsFor(null)}
-              />
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* Category picker — the Budget screen is where a miscategorization is
-          most visible, since you are looking at the category it landed in. */}
-      <Modal
-        visible={recategorizing !== null}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setRecategorizing(null)}
+        onRequestClose={() => setSheet(null)}
       >
         <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
           <View
@@ -314,15 +294,22 @@ export default function BudgetScreen() {
               backgroundColor: COLORS.background,
               borderTopLeftRadius: 20,
               borderTopRightRadius: 20,
-              maxHeight: "70%",
+              maxHeight: "80%",
             }}
           >
-            {recategorizing && (
+            {sheet && sheet.mode === "actions" && (
+              <TransactionActionSheet
+                transaction={sheet.txn}
+                onChangeCategory={() => setSheet({ txn: sheet.txn, mode: "category" })}
+                onClose={() => setSheet(null)}
+              />
+            )}
+            {sheet && sheet.mode === "category" && (
               <CategoryPicker
-                transactionId={recategorizing.id}
-                description={recategorizing.merchantName ?? recategorizing.description}
-                currentCategory={recategorizing.category}
-                onDone={() => setRecategorizing(null)}
+                transactionId={sheet.txn.id}
+                description={sheet.txn.merchantName ?? sheet.txn.description}
+                currentCategory={sheet.txn.category}
+                onDone={() => setSheet(null)}
               />
             )}
           </View>

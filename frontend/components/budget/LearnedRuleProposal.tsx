@@ -91,7 +91,9 @@ export function LearnedRuleProposal({
   const loadingDefault = pattern === null;
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.background, padding: 16 }}>
+    // No flex:1 — same reason as CategoryPicker: this renders in a content-sized
+    // bottom sheet, where a flex:1 root collapses to zero height.
+    <View style={{ backgroundColor: COLORS.background, padding: 16 }}>
       <Text style={{ color: COLORS.textPrimary, fontWeight: "700", fontSize: 18 }}>
         Make this a rule?
       </Text>

@@ -12,7 +12,7 @@
  * instead of picking a wrong envelope to get out of the sheet.
  */
 import { useState } from "react";
-import { View, Text, Pressable, ScrollView, ActivityIndicator, Alert } from "react-native";
+import { View, Text, Pressable, ScrollView, ActivityIndicator, Alert, Dimensions } from "react-native";
 import { COLORS } from "@/constants/theme";
 import { useEnvelopes } from "@/hooks/useEnvelopes";
 import { useRecategorize } from "@/hooks/useRecategorize";
@@ -80,7 +80,12 @@ export function CategoryPicker({
   const options = [...envelopes.map((e) => e.name), UNCATEGORIZED];
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.background, padding: 16 }}>
+    // No flex:1 — this renders inside a bottom sheet whose height is driven by
+    // its content (maxHeight only). A flex:1 root there has no bounded height to
+    // fill and collapses to zero, so the whole picker rendered empty behind the
+    // dark backdrop (looked like a hang). Sizing to content fixes that; the list
+    // gets an explicit maxHeight so a long one still scrolls.
+    <View style={{ backgroundColor: COLORS.background, padding: 16 }}>
       <Text style={{ color: COLORS.textPrimary, fontWeight: "700", fontSize: 18 }}>
         Change category
       </Text>
@@ -91,7 +96,7 @@ export function CategoryPicker({
       {isLoading ? (
         <ActivityIndicator style={{ marginTop: 24 }} color={COLORS.textMuted} />
       ) : (
-        <ScrollView style={{ marginTop: 16 }}>
+        <ScrollView style={{ marginTop: 16, maxHeight: Dimensions.get("window").height * 0.5 }}>
           {options.map((name) => {
             const isCurrent = name.toLowerCase() === current.toLowerCase();
             return (

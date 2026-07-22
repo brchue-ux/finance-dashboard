@@ -25,11 +25,13 @@ export default function AccountTransactionsScreen() {
   // when we have a specific row to find.
   const PAGE = highlight ? 200 : 30;
   const { data, isLoading, isError } = useAccountTransactions(id ?? "", PAGE);
-  const [splitting, setSplitting] = useState<Transaction | null>(null);
-  const [recategorizing, setRecategorizing] = useState<Transaction | null>(null);
-  // The transaction whose action sheet is open. Tapping a row opens this; the
-  // sheet then routes to the category or split editor below.
-  const [actionsFor, setActionsFor] = useState<Transaction | null>(null);
+  // One sheet, ONE open Modal. Closing one Modal while opening another in the
+  // same render hangs on Android — the second never presents and the dark
+  // backdrop sticks. So the action list, the category picker and the split
+  // editor are three modes of a single Modal, switched in place.
+  const [sheet, setSheet] = useState<
+    { txn: Transaction; mode: "actions" | "category" | "split" } | null
+  >(null);
   const scrollRef = useRef<ScrollView>(null);
 
   // Tinting a row that is off-screen is invisible; scroll it into view. Offset
@@ -75,7 +77,7 @@ export default function AccountTransactionsScreen() {
             <TransactionFeed
               transactions={data!.transactions}
               highlightId={highlight}
-              onPressTransaction={setActionsFor}
+              onPressTransaction={(txn) => setSheet({ txn, mode: "actions" })}
               limit={PAGE}
               onHighlightLayout={scrollToHighlight}
             />
@@ -88,42 +90,14 @@ export default function AccountTransactionsScreen() {
         )}
       </ScrollView>
 
-      {/* Action sheet — the single entry point for a row tap. Routes to the
-          category picker or the split editor rather than making either a hidden
-          gesture. Split is offered here because this screen has account context. */}
+      {/* One Modal, three modes. The row tap opens "actions"; the buttons switch
+          the mode in place rather than opening a second Modal, which is what hung
+          on Android. Every path closes with setSheet(null). */}
       <Modal
-        visible={actionsFor !== null}
+        visible={sheet !== null}
         animationType="slide"
         transparent
-        onRequestClose={() => setActionsFor(null)}
-      >
-        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
-          <View style={{ backgroundColor: COLORS.background, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
-            {actionsFor && (
-              <TransactionActionSheet
-                transaction={actionsFor}
-                onChangeCategory={() => {
-                  setRecategorizing(actionsFor);
-                  setActionsFor(null);
-                }}
-                onSplit={() => {
-                  setSplitting(actionsFor);
-                  setActionsFor(null);
-                }}
-                onClose={() => setActionsFor(null)}
-              />
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* Split editor. Reached by tapping a row here rather than from the
-          blended Budget feed, where a row appears without its account. */}
-      <Modal
-        visible={splitting !== null}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setSplitting(null)}
+        onRequestClose={() => setSheet(null)}
       >
         <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
           <View
@@ -131,49 +105,34 @@ export default function AccountTransactionsScreen() {
               backgroundColor: COLORS.background,
               borderTopLeftRadius: 20,
               borderTopRightRadius: 20,
-              padding: 20,
               maxHeight: "88%",
             }}
           >
-            <ScrollView>
-              {splitting && (
-                <SplitEditor
-                  transactionId={splitting.id}
-                  transactionAmount={splitting.amount}
-                  description={splitting.merchantName ?? splitting.description}
-                  onDone={() => setSplitting(null)}
-                />
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Category picker. Separate modal from the split editor because the two
-          are different edits: one reassigns the whole transaction, the other
-          divides it. */}
-      <Modal
-        visible={recategorizing !== null}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setRecategorizing(null)}
-      >
-        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
-          <View
-            style={{
-              backgroundColor: COLORS.background,
-              borderTopLeftRadius: 20,
-              borderTopRightRadius: 20,
-              maxHeight: "70%",
-            }}
-          >
-            {recategorizing && (
-              <CategoryPicker
-                transactionId={recategorizing.id}
-                description={recategorizing.merchantName ?? recategorizing.description}
-                currentCategory={recategorizing.category}
-                onDone={() => setRecategorizing(null)}
+            {sheet && sheet.mode === "actions" && (
+              <TransactionActionSheet
+                transaction={sheet.txn}
+                onChangeCategory={() => setSheet({ txn: sheet.txn, mode: "category" })}
+                onSplit={() => setSheet({ txn: sheet.txn, mode: "split" })}
+                onClose={() => setSheet(null)}
               />
+            )}
+            {sheet && sheet.mode === "category" && (
+              <CategoryPicker
+                transactionId={sheet.txn.id}
+                description={sheet.txn.merchantName ?? sheet.txn.description}
+                currentCategory={sheet.txn.category}
+                onDone={() => setSheet(null)}
+              />
+            )}
+            {sheet && sheet.mode === "split" && (
+              <ScrollView contentContainerStyle={{ padding: 20 }}>
+                <SplitEditor
+                  transactionId={sheet.txn.id}
+                  transactionAmount={sheet.txn.amount}
+                  description={sheet.txn.merchantName ?? sheet.txn.description}
+                  onDone={() => setSheet(null)}
+                />
+              </ScrollView>
             )}
           </View>
         </View>
