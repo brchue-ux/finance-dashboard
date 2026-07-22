@@ -9,10 +9,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
-import { bankAccounts, bankBalanceSnapshots, portfolioSnapshots, transactions, transactionSplits } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { bankAccounts, bankBalanceSnapshots, budgetEnvelopes, portfolioSnapshots, transactions, transactionSplits } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 import { attributeSpend } from "@/lib/budget/summarize";
 import { budgetRows } from "@/lib/budget/transfers";
+import { classifyRefunds, effectiveMonth } from "@/lib/budget/refunds";
 
 export async function GET(req: NextRequest) {
   const authed = await requireUser(req);
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const months = Math.min(parseInt(searchParams.get("months") ?? "12", 10) || 12, 60);
 
-  const [accounts, balanceSnaps, portfolioSnaps, txns, splits] = await Promise.all([
+  const [accounts, balanceSnaps, portfolioSnaps, txns, splits, envelopes] = await Promise.all([
     db
       .select({ id: bankAccounts.id, type: bankAccounts.type })
       .from(bankAccounts)
@@ -39,6 +40,8 @@ export async function GET(req: NextRequest) {
       .select({
         id: transactions.id,
         date: transactions.date,
+        // For refund classification's merchant matching, not display.
+        description: transactions.description,
         amount: transactions.amount,
         category: transactions.category,
         transferSource: transactions.transferSource,
@@ -54,6 +57,12 @@ export async function GET(req: NextRequest) {
       })
       .from(transactionSplits)
       .where(eq(transactionSplits.userId, userId)),
+    // Active envelope names gate refund classification: a positive row only
+    // nets against a budget that exists.
+    db
+      .select({ name: budgetEnvelopes.name })
+      .from(budgetEnvelopes)
+      .where(and(eq(budgetEnvelopes.userId, userId), eq(budgetEnvelopes.active, 1))),
   ]);
 
   // ── Net worth: daily buckets with carry-forward of each account's last-known
@@ -111,27 +120,36 @@ export async function GET(req: NextRequest) {
   // the two screens would disagree about the same month.
   const txnsForFlow = budgetRows(txns);
 
+  // Same refund treatment as /api/budget, or the two screens disagree about
+  // the same month: a refund is negative spending in its purchase's month
+  // (when matched), never income. Full history is already loaded here.
+  const envelopeNames = new Set(envelopes.map((e) => e.name));
+  const refunds = classifyRefunds(txns, envelopeNames);
+
   const trendMap = new Map<string, Map<string, number>>(); // month → category → spend
   const flowMap = new Map<string, { income: number; expenses: number }>();
   // Income vs expenses is a cash-flow view, so it stays on the parent amount —
   // splitting a purchase across envelopes doesn't change what left the account.
   for (const t of txnsForFlow) {
-    const m = monthOf(t.date);
+    const isRefund = refunds.has(t.id);
+    const m = isRefund ? effectiveMonth(t, refunds) : monthOf(t.date);
     if (m < cutoffMonth) continue;
     const flow = flowMap.get(m) ?? { income: 0, expenses: 0 };
-    if (t.amount > 0) flow.income += t.amount;
+    if (isRefund) flow.expenses -= t.amount;
+    else if (t.amount > 0) flow.income += t.amount;
     else flow.expenses += Math.abs(t.amount);
     flowMap.set(m, flow);
   }
 
   // Category trends are per-envelope, so they follow the splits.
   for (const a of attributeSpend(txnsForFlow, splits)) {
-    const m = monthOf(a.transaction.date);
+    const isRefund = refunds.has(a.transaction.id);
+    const m = isRefund ? effectiveMonth(a.transaction, refunds) : monthOf(a.transaction.date);
     if (m < cutoffMonth) continue;
-    if (a.amount >= 0) continue;
+    if (a.amount >= 0 && !isRefund) continue;
     const cat = a.category ?? "uncategorized";
     const catMap = trendMap.get(m) ?? new Map<string, number>();
-    catMap.set(cat, (catMap.get(cat) ?? 0) + Math.abs(a.amount));
+    catMap.set(cat, (catMap.get(cat) ?? 0) - a.amount);
     trendMap.set(m, catMap);
   }
 

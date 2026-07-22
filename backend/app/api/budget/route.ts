@@ -19,6 +19,7 @@ import {
   computeNotableTransactions,
 } from "@/lib/budget/summarize";
 import { monthElapsedFraction, computeTypicalSpend } from "@/lib/budget/pace";
+import { classifyRefunds, effectiveMonth } from "@/lib/budget/refunds";
 
 export async function GET(req: NextRequest) {
   const authed = await requireUser(req);
@@ -95,16 +96,27 @@ export async function GET(req: NextRequest) {
       .where(eq(transactions.userId, userId)),
   ]);
 
+  // Refunds are classified against FULL history (a July payback must find its
+  // June purchase), then the month's math runs over rows EFFECTIVE in this
+  // month: dated rows minus refunds reconciled elsewhere, plus refunds from
+  // later months reconciled here. Summaries are computed on the fly, so this
+  // is what makes a past month's budget heal when the refund arrives.
+  const envelopeNames = new Set(envelopes.map((e) => e.name));
+  const refunds = classifyRefunds(historyTxns, envelopeNames);
+  const monthKey = `${year}-${String(month).padStart(2, "0")}`;
+  const effectiveTxns = historyTxns.filter((t) => effectiveMonth(t, refunds) === monthKey);
+  const refundIds = new Set(refunds.keys());
+
   // 6d — pace against the elapsed month (default view) and each category's own
   // typical monthly spend (the deeper dig on tap).
   const pace = {
     monthFraction: monthElapsedFraction(year, month, new Date()),
-    typicalByCategory: computeTypicalSpend(historyTxns, splits, year, month),
+    typicalByCategory: computeTypicalSpend(historyTxns, splits, year, month, refunds),
   };
 
-  const summaries = summarizeEnvelopes(envelopes, allocations, monthTxns, splits, pace);
-  const totals = summarizeTotals(summaries, monthTxns, splits);
-  const notableByCategory = computeNotableTransactions(summaries, monthTxns, splits);
+  const summaries = summarizeEnvelopes(envelopes, allocations, effectiveTxns, splits, pace, refundIds);
+  const totals = summarizeTotals(summaries, effectiveTxns, splits, refundIds);
+  const notableByCategory = computeNotableTransactions(summaries, effectiveTxns, splits);
 
   // `splits` is already loaded for the budget math; reuse it to tell the feed
   // which rows are split (and into what), so a split reads as visibly done here
@@ -120,7 +132,14 @@ export async function GET(req: NextRequest) {
     year,
     month,
     envelopes: summaries,
-    transactions: monthTxns.map((t) => ({ ...t, splitCategories: splitsByTxn.get(t.id) ?? null })),
+    // The feed stays calendar-shaped (it should read like the bank statement);
+    // each refund row carries where its money actually counted, so the UI can
+    // say "Refund → Jun" instead of the row silently vanishing from the math.
+    transactions: monthTxns.map((t) => ({
+      ...t,
+      splitCategories: splitsByTxn.get(t.id) ?? null,
+      refundEffectiveMonth: refunds.get(t.id)?.effectiveMonth ?? null,
+    })),
     notableTransactions: notableByCategory,
     summary: totals,
     bankConnections: connections,

@@ -19,6 +19,7 @@
  */
 import { budgetRows } from "@/lib/budget/transfers";
 import { attributeSpend, type TransactionRow, type SplitRow } from "@/lib/budget/summarize";
+import { effectiveMonth, type RefundAssignment } from "@/lib/budget/refunds";
 
 /**
  * Fraction of the given month that has elapsed as of `now`, in [0, 1].
@@ -59,7 +60,8 @@ export function computeTypicalSpend(
   allTxns: TransactionRow[],
   splits: SplitRow[],
   excludeYear: number,
-  excludeMonth: number
+  excludeMonth: number,
+  refunds: Map<string, RefundAssignment> = new Map()
 ): Map<string, TypicalSpend> {
   const spendable = budgetRows(allTxns);
   const excludeKey = `${excludeYear}-${String(excludeMonth).padStart(2, "0")}`;
@@ -68,12 +70,15 @@ export function computeTypicalSpend(
   const totals = new Map<string, number>();
 
   for (const a of attributeSpend(spendable, splits)) {
-    if (a.amount >= 0) continue; // outflow only
-    const month = a.transaction.date.slice(0, 7);
+    // Outflows add; refunds subtract, in their PURCHASE's month — otherwise a
+    // returned $240 order permanently inflates that category's "typical".
+    const isRefund = refunds.has(a.transaction.id);
+    if (a.amount >= 0 && !isRefund) continue;
+    const month = effectiveMonth(a.transaction, refunds);
     if (month === excludeKey) continue;
     if (a.category === null) continue;
     months.add(month);
-    totals.set(a.category, (totals.get(a.category) ?? 0) + Math.abs(a.amount));
+    totals.set(a.category, (totals.get(a.category) ?? 0) - a.amount);
   }
 
   const monthCount = months.size;

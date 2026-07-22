@@ -114,7 +114,8 @@ export function summarizeEnvelopes(
   allocations: AllocationRow[],
   monthTxns: TransactionRow[],
   splits: SplitRow[] = [],
-  pace?: PaceContext
+  pace?: PaceContext,
+  refundIds: Set<string> = new Set()
 ): EnvelopeSummary[] {
   // A per-month allocation overrides the envelope's standing target, which is
   // how reallocation works without rewriting the envelope itself.
@@ -123,9 +124,13 @@ export function summarizeEnvelopes(
 
   return envelopes.map((env) => {
     const allocated = allocationMap.get(env.id) ?? env.monthlyTarget;
+    // Outflows count toward spent; a refund (a positive row lib/budget/refunds
+    // classified) counts AGAINST it — negative spending, not income. Netted
+    // here, at the one place spent is defined, so a refund-heavy month can go
+    // below zero honestly rather than being floored into fiction.
     const spent = attributed
-      .filter((a) => a.category === env.name && a.amount < 0)
-      .reduce((sum, a) => sum + Math.abs(a.amount), 0);
+      .filter((a) => a.category === env.name && (a.amount < 0 || refundIds.has(a.transaction.id)))
+      .reduce((sum, a) => sum - a.amount, 0);
 
     // "Unconfigured" must mean "never set up", NOT "budgeted $0 this month".
     // A 0 standing target means not set up yet, and reporting that as over
@@ -224,7 +229,8 @@ export function computeNotableTransactions(
 export function summarizeTotals(
   summaries: EnvelopeSummary[],
   monthTxns: TransactionRow[],
-  splits: SplitRow[] = []
+  splits: SplitRow[] = [],
+  refundIds: Set<string> = new Set()
 ) {
   // Removed once, here, rather than subtracted from each total below: income,
   // outflow, unattributed spend and `saved` all derive from these same rows, so
@@ -248,12 +254,21 @@ export function summarizeTotals(
 
   // Computed independently rather than as totalSpent + unattributedSpent, so
   // the two halves are cross-checkable instead of reconciling by definition.
+  // Refunds net against outflow with the same sign convention as in
+  // summarizeEnvelopes, so `totalOutflow - unattributedSpent === totalSpent`
+  // stays a checkable identity.
   const totalOutflow = attributed
-    .filter((a) => a.amount < 0)
-    .reduce((s, a) => s + Math.abs(a.amount), 0);
+    .filter((a) => a.amount < 0 || refundIds.has(a.transaction.id))
+    .reduce((s, a) => s - a.amount, 0);
 
   const totalAllocated = summaries.reduce((s, e) => s + e.allocated, 0);
-  const totalIncome = spendable.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+  // A refund is not earning — it already reduced its envelope above. Positive
+  // rows that are NOT refunds (paycheques, and interest received even when a
+  // keyword rule filed it under an envelope) are the income. Both sides of
+  // `saved` move by the same amount, so it is unchanged by construction.
+  const totalIncome = spendable
+    .filter((t) => t.amount > 0 && !refundIds.has(t.id))
+    .reduce((s, t) => s + t.amount, 0);
 
   return {
     totalSpent,

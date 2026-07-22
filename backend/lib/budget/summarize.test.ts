@@ -372,3 +372,55 @@ describe("computeNotableTransactions — with splits", () => {
     expect(notable[0].transactions[0].amount).toBe(-50);
   });
 });
+
+describe("refund netting — positive rows classified as refunds", () => {
+  it("nets a refund against its envelope's spend instead of counting it as income", () => {
+    const groceries = txn("Groceries", -300);
+    const refund = txn("Groceries", 40);
+    const refundIds = new Set([refund.id]);
+
+    const summaries = summarizeEnvelopes([env("Groceries", 500)], [], [groceries, refund], [], undefined, refundIds);
+    expect(summaries[0].spent).toBe(260);
+
+    const totals = summarizeTotals(summaries, [groceries, refund], [], refundIds);
+    expect(totals.totalIncome).toBe(0); // the refund is NOT income
+    expect(totals.totalSpent).toBe(260);
+    expect(totals.totalOutflow).toBe(260);
+  });
+
+  it("without classification a positive row keeps the old behaviour: income, no netting", () => {
+    const groceries = txn("Groceries", -300);
+    const interest = txn("Groceries", 40); // e.g. income a keyword rule mis-filed
+    const summaries = summarizeEnvelopes([env("Groceries", 500)], [], [groceries, interest]);
+    expect(summaries[0].spent).toBe(300);
+    const totals = summarizeTotals(summaries, [groceries, interest]);
+    expect(totals.totalIncome).toBe(40);
+    expect(totals.totalOutflow).toBe(300);
+  });
+
+  it("a refund-heavy month goes honestly negative rather than flooring at zero", () => {
+    const purchase = txn("Shopping", -50);
+    const refund = txn("Shopping", 240); // last month's big order came back
+    const refundIds = new Set([refund.id]);
+    const summaries = summarizeEnvelopes([env("Shopping", 200)], [], [purchase, refund], [], undefined, refundIds);
+    expect(summaries[0].spent).toBe(-190);
+    expect(summaries[0].remaining).toBe(390); // real extra room, not fiction
+    expect(summaries[0].overBudget).toBe(false);
+  });
+
+  it("keeps the cross-check identity: totalOutflow − unattributedSpent === totalSpent", () => {
+    const rows = [
+      txn("Groceries", -300),
+      txn("Groceries", 40), // refund
+      txn(null, -75), // unattributed spend
+      txn(null, 1000), // paycheque
+    ];
+    const refundIds = new Set([rows[1].id]);
+    const summaries = summarizeEnvelopes([env("Groceries", 500)], [], rows, [], undefined, refundIds);
+    const totals = summarizeTotals(summaries, rows, [], refundIds);
+    expect(totals.totalOutflow - totals.unattributedSpent).toBeCloseTo(totals.totalSpent);
+    expect(totals.totalIncome).toBe(1000);
+    // saved is unchanged by construction: income −R and outflow −R cancel.
+    expect(totals.saved).toBe(1000 - 335);
+  });
+});

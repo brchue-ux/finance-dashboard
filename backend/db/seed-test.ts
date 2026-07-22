@@ -423,6 +423,52 @@ async function main() {
     });
   }
 
+  // ── refund fixtures: both classifications, deterministically visible ─────
+  // A matched cross-month refund (last month's purchase paid back this month →
+  // the feed row reads "Refund → <last month>" and LAST month's Shopping nets
+  // down), and an "Interest received" row that a keyword rule files under
+  // Fees & Interest but which has no outflow history — so it must count as
+  // plain income, not shrink that envelope.
+  const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 12);
+  const refundBase = {
+    userId,
+    accountId: cardId,
+    plaidTransactionId: null,
+    pending: 0,
+    createdAt: now,
+    isoCurrencyCode: "CAD" as const,
+  };
+  txns.push(
+    {
+      ...refundBase,
+      id: randomUUID(),
+      date: `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, "0")}-12`,
+      description: "AMZN Mktp CA WWW.AMAZON.CA",
+      merchantName: `${TEST_TAG} AMZN Mktp CA (refunded later)`,
+      amount: -87.43,
+      category: categoryFor("AMZN Mktp CA WWW.AMAZON.CA"),
+    },
+    {
+      ...refundBase,
+      id: randomUUID(),
+      date: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(Math.min(today.getDate(), 5)).padStart(2, "0")}`,
+      description: "AMZN Mktp CA WWW.AMAZON.CA",
+      merchantName: `${TEST_TAG} AMZN Mktp CA (refund)`,
+      amount: 87.43,
+      category: categoryFor("AMZN Mktp CA WWW.AMAZON.CA"),
+    },
+    {
+      ...refundBase,
+      id: randomUUID(),
+      accountId: chequingId,
+      date: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`,
+      description: "Interest received (Chequing)",
+      merchantName: `${TEST_TAG} Interest received`,
+      amount: 12.34,
+      category: categoryFor("Interest received (Chequing)"),
+    }
+  );
+
   await db.insert(transactions).values(txns);
 
   // ── balance snapshots, so Reports' net-worth trend has a series ─────────
