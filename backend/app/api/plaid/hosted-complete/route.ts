@@ -11,6 +11,7 @@ import { requireUser } from "@/lib/auth-guard";
 import { plaidClient } from "@/lib/plaid";
 import { db } from "@/db";
 import { bankConnections } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { encrypt } from "@/lib/crypto";
 import { syncAccountsForConnection } from "@/lib/plaid-accounts";
 import { v4 as uuidv4 } from "uuid";
@@ -33,7 +34,7 @@ const bodySchema = z.object({
  */
 async function pollForItemAddResult(
   link_token: string
-): Promise<{ publicToken: string; institutionName?: string } | undefined> {
+): Promise<{ publicToken: string; institutionName?: string; institutionId?: string } | undefined> {
   for (let attempt = 0; attempt < 8; attempt++) {
     const tokenRes = await plaidClient.linkTokenGet({ link_token });
     const sessions = tokenRes.data.link_sessions ?? [];
@@ -44,6 +45,7 @@ async function pollForItemAddResult(
       return {
         publicToken: result.public_token,
         institutionName: result.institution?.name ?? undefined,
+        institutionId: result.institution?.institution_id ?? undefined,
       };
     }
     if (attempt < 7) await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -70,6 +72,36 @@ export async function POST(req: NextRequest) {
   // placeholder, so Banks shows e.g. "Tangerine - Personal" rather than "Bank".
   const resolvedInstitutionName = result.institutionName ?? institution_name;
 
+  // Same-institution dedup guard: relinking a bank creates a NEW Plaid item,
+  // so item_id can't dedupe — the institution can. A second live connection to
+  // the same institution would import every account twice (and hide the
+  // transfers between the copies). Legacy rows predate plaidInstitutionId, so
+  // the name is the fallback identity.
+  const existing = await db
+    .select({
+      id: bankConnections.id,
+      status: bankConnections.status,
+      plaidInstitutionId: bankConnections.plaidInstitutionId,
+      institutionName: bankConnections.institutionName,
+    })
+    .from(bankConnections)
+    .where(eq(bankConnections.userId, authed.userId));
+  const duplicate = existing.find(
+    (c) =>
+      c.status === "active" &&
+      (result.institutionId
+        ? c.plaidInstitutionId === result.institutionId
+        : c.institutionName.toLowerCase() === resolvedInstitutionName.toLowerCase())
+  );
+  if (duplicate) {
+    return NextResponse.json(
+      {
+        error: `${resolvedInstitutionName} is already connected. To fix a broken connection, relink it from the Banks tab instead of adding it again.`,
+      },
+      { status: 409 }
+    );
+  }
+
   const exchangeRes = await plaidClient.itemPublicTokenExchange({
     public_token: result.publicToken,
   });
@@ -80,6 +112,7 @@ export async function POST(req: NextRequest) {
     id: connectionId,
     userId: authed.userId,
     institutionName: resolvedInstitutionName,
+    plaidInstitutionId: result.institutionId ?? null,
     plaidItemId: item_id,
     plaidAccessToken: encrypt(access_token),
     status: "active",

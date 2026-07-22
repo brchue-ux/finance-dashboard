@@ -115,6 +115,10 @@ export const bankConnections = sqliteTable("bank_connections", {
     .notNull()
     .references(() => user.id),
   institutionName: text("institution_name").notNull(), // "RBC" | "Tangerine" | "Scotiabank"
+  // Plaid's stable institution identity (ins_xxx) — the dedup key for "is this
+  // bank already connected". item_id can't serve: relinking mints a new item.
+  // Nullable: legacy rows predate it, so name is their fallback identity.
+  plaidInstitutionId: text("plaid_institution_id"),
   plaidItemId: text("plaid_item_id").notNull(),
   plaidAccessToken: text("plaid_access_token").notNull(), // AES-256-GCM encrypted
   status: text("status").notNull().default("active"), // "active" | "relink_required" | "error"
