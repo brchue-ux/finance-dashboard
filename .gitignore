@@ -29,3 +29,6 @@ local.db
 *.db-journal
 *.sqlite
 *.sqlite3
+
+# Personal documents — never push (same reason as Transactions/)
+House/
