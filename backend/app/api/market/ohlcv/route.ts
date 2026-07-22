@@ -10,12 +10,13 @@ import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { ohlcvCache } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
-import { getOHLCV } from "@/lib/market-data";
+import { getOHLCV, INTRADAY_RANGES, type OHLCVRange } from "@/lib/market-data";
 
-type Range = "1mo" | "3mo" | "6mo" | "1y" | "2y" | "5y";
-const VALID_RANGES: Range[] = ["1mo", "3mo", "6mo", "1y", "2y", "5y"];
+const VALID_RANGES: OHLCVRange[] = ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y"];
 
+// Intraday charts go stale within the trading day; daily/weekly bars don't.
 const CACHE_TTL_SECONDS = 24 * 60 * 60;
+const INTRADAY_CACHE_TTL_SECONDS = 15 * 60;
 
 export async function GET(req: NextRequest) {
   const authed = await requireUser(req);
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const ticker = searchParams.get("ticker")?.toUpperCase();
-  const range = (searchParams.get("range") ?? "1y") as Range;
+  const range = (searchParams.get("range") ?? "1y") as OHLCVRange;
 
   if (!ticker) return NextResponse.json({ error: "ticker required" }, { status: 400 });
   if (!VALID_RANGES.includes(range)) {
@@ -37,7 +38,8 @@ export async function GET(req: NextRequest) {
     .where(and(eq(ohlcvCache.ticker, ticker), eq(ohlcvCache.range, range)))
     .limit(1);
 
-  if (cached && now - cached.fetchedAt < CACHE_TTL_SECONDS) {
+  const ttl = INTRADAY_RANGES.has(range) ? INTRADAY_CACHE_TTL_SECONDS : CACHE_TTL_SECONDS;
+  if (cached && now - cached.fetchedAt < ttl) {
     return NextResponse.json({ bars: JSON.parse(cached.bars), cached: true });
   }
 

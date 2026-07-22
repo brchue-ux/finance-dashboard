@@ -2,15 +2,19 @@
  * Alpha Vantage fallback provider.
  * Free tier: 25 requests/day. Used only when Yahoo Finance is unavailable.
  */
-import type { MarketDataProvider, OHLCVBar } from "./types";
+import type { MarketDataProvider, OHLCVBar, OHLCVRange } from "./types";
 
 const BASE_URL = "https://www.alphavantage.co/query";
 
 export class AlphaVantageProvider implements MarketDataProvider {
-  async getOHLCV(
-    ticker: string,
-    range: "1mo" | "3mo" | "6mo" | "1y" | "2y" | "5y"
-  ): Promise<OHLCVBar[]> {
+  async getOHLCV(ticker: string, range: OHLCVRange): Promise<OHLCVBar[]> {
+    // Intraday fallback deliberately unsupported: AV's intraday endpoint uses
+    // different exchange suffixes for TSX symbols and would silently 404 the
+    // exact tickers this app holds. Failing here lets the route serve stale
+    // cache or a clean "unavailable" instead of a wrong-symbol guess.
+    if (range === "1d" || range === "5d") {
+      throw new Error("Alpha Vantage fallback does not support intraday ranges");
+    }
     const apiKey = process.env.ALPHA_VANTAGE_API_KEY!;
     const url = `${BASE_URL}?function=TIME_SERIES_DAILY_ADJUSTED&symbol=${ticker}&outputsize=full&apikey=${apiKey}`;
 

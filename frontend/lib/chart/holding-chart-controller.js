@@ -10,7 +10,7 @@
 // methods (no postMessage coupling here — that bridge lives in the asset).
 
 /**
- * @typedef {{ time: string, open: number, high: number, low: number, close: number }} Bar
+ * @typedef {{ time: string|number, open: number, high: number, low: number, close: number }} Bar
  * @typedef {{ costBasis?: number, purchaseTime?: string, purchaseLabel?: string }} Overlay
  * @typedef {{ text?: string, accent?: string }} Theme
  * @typedef {{ ma20?: boolean, ma50?: boolean, rsi?: boolean, macd?: boolean }} IndicatorFlags
@@ -99,7 +99,13 @@ export function createHoldingChartController(LC, el) {
       layout: { background: { color: "transparent" }, textColor: text, attributionLogo: false },
       grid: { vertLines: { visible: false }, horzLines: { color: "rgba(255,255,255,0.06)" } },
       rightPriceScale: { borderColor: "rgba(255,255,255,0.1)" },
-      timeScale: { borderColor: "rgba(255,255,255,0.1)", fixLeftEdge: true, fixRightEdge: true },
+      timeScale: {
+        borderColor: "rgba(255,255,255,0.1)", fixLeftEdge: true, fixRightEdge: true,
+        // Intraday bars arrive as unix seconds and share one calendar date — the
+        // axis must label times of day or every tick reads identically.
+        timeVisible: typeof bars[0].time === "number",
+        secondsVisible: false,
+      },
       crosshair: { mode: LC.CrosshairMode.Normal },
       autoSize: true,
     });

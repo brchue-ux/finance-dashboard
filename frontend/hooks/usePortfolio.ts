@@ -72,18 +72,20 @@ export function useRenameAccount() {
 }
 
 export function useOHLCV(ticker: string, range: string) {
+  const intraday = range === "1d" || range === "5d";
   return useQuery({
     queryKey: ["ohlcv", ticker, range],
     queryFn: () =>
       api.get<{ bars: OHLCVBar[]; unavailable?: boolean; stale?: boolean }>(
         `/api/market/ohlcv?ticker=${ticker}&range=${range}`
       ),
-    staleTime: 24 * 60 * 60 * 1000, // 24 hours
+    // Intraday bars move within the day (server caches 15 min); history doesn't.
+    staleTime: intraday ? 15 * 60 * 1000 : 24 * 60 * 60 * 1000,
   });
 }
 
 export interface OHLCVBar {
-  time: string;
+  time: string | number; // ISO date for daily/weekly, unix seconds for intraday
   open: number;
   high: number;
   low: number;

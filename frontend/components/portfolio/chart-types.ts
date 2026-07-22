@@ -6,7 +6,7 @@
  * Metro's platform resolution.
  */
 export interface ChartBar {
-  time: string; // YYYY-MM-DD
+  time: string | number; // YYYY-MM-DD for daily/weekly bars, unix seconds for intraday
   open: number;
   high: number;
   low: number;

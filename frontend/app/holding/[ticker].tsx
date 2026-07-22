@@ -35,7 +35,8 @@ export default function HoldingDetailScreen() {
   const { data: portfolio } = usePortfolio();
   // Range selection — the backend already accepts these; results are cached
   // per (ticker, range) both server-side (ohlcv_cache) and in react-query.
-  const [range, setRange] = useState<"1mo" | "3mo" | "6mo" | "1y" | "5y">("1y");
+  // 1d/5d are intraday (5m / 30m bars) with a short cache.
+  const [range, setRange] = useState<"1d" | "5d" | "1mo" | "3mo" | "6mo" | "1y" | "5y">("1y");
   const { data: ohlcv, isLoading: chartLoading, isError: chartError } = useOHLCV(symbol, range);
   const [chatOpen, setChatOpen] = useState(false);
   const [ma20, setMa20] = useState(false);
@@ -116,15 +117,21 @@ export default function HoldingDetailScreen() {
           <ChartView bars={bars} overlay={overlay} ma20={ma20} ma50={ma50} rsi={rsi} macd={macd} height={chartHeight} />
         )}
 
-        {/* Range selector — one active at a time, unlike the indicator toggles. */}
-        <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-          {(["1mo", "3mo", "6mo", "1y", "5y"] as const).map((r) => (
-            <Chip
-              key={r}
-              label={r === "1mo" ? "1M" : r === "3mo" ? "3M" : r === "6mo" ? "6M" : r === "1y" ? "1Y" : "5Y"}
-              active={range === r}
-              onPress={() => setRange(r)}
-            />
+        {/* Range selector — one active at a time, unlike the indicator toggles.
+            Seven chips share the row width equally (grow) so they fit any phone. */}
+        <View style={{ flexDirection: "row", gap: 6, marginTop: 12 }}>
+          {(
+            [
+              ["1d", "1D"],
+              ["5d", "1W"],
+              ["1mo", "1M"],
+              ["3mo", "3M"],
+              ["6mo", "6M"],
+              ["1y", "1Y"],
+              ["5y", "5Y"],
+            ] as const
+          ).map(([r, label]) => (
+            <Chip key={r} label={label} active={range === r} onPress={() => setRange(r)} grow />
           ))}
         </View>
 
@@ -193,12 +200,24 @@ function Row({ label, value, valueColor }: { label: string; value: string; value
   );
 }
 
-function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+function Chip({
+  label,
+  active,
+  onPress,
+  grow,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  grow?: boolean;
+}) {
   return (
     <Pressable
       onPress={onPress}
       style={{
-        paddingHorizontal: 14,
+        // grow: equal-width chips that center their label (range row);
+        // default: content-sized chips (indicator toggles).
+        ...(grow ? { flex: 1, alignItems: "center" as const, paddingHorizontal: 0 } : { paddingHorizontal: 14 }),
         paddingVertical: 7,
         borderRadius: 10,
         borderWidth: 1,

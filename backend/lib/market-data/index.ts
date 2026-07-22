@@ -4,15 +4,12 @@
  */
 import { YahooFinanceProvider } from "./yahoo";
 import { AlphaVantageProvider } from "./alpha-vantage";
-import type { MarketDataProvider, OHLCVBar } from "./types";
+import type { MarketDataProvider, OHLCVBar, OHLCVRange } from "./types";
 
 const yahoo = new YahooFinanceProvider();
 const alphaVantage = new AlphaVantageProvider();
 
-export async function getOHLCV(
-  ticker: string,
-  range: "1mo" | "3mo" | "6mo" | "1y" | "2y" | "5y"
-): Promise<OHLCVBar[]> {
+export async function getOHLCV(ticker: string, range: OHLCVRange): Promise<OHLCVBar[]> {
   try {
     return await yahoo.getOHLCV(ticker, range);
   } catch (err) {
@@ -21,4 +18,5 @@ export async function getOHLCV(
   }
 }
 
-export type { MarketDataProvider, OHLCVBar };
+export type { MarketDataProvider, OHLCVBar, OHLCVRange };
+export { INTRADAY_RANGES } from "./types";
