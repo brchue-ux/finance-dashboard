@@ -38,6 +38,12 @@ function fmt(amount: number) {
   return amount < 0 ? `-$${abs.toFixed(2)}` : `+$${abs.toFixed(2)}`;
 }
 
+/** "2026-06" -> "Jun" — where a refund's money actually counted. */
+function formatRefundMonth(yyyyMm: string): string {
+  const m = Number(yyyyMm.slice(5, 7));
+  return MONTHS[m - 1] ?? yyyyMm;
+}
+
 export function TransactionFeed({
   transactions,
   highlightId,
@@ -118,6 +124,17 @@ export function TransactionFeed({
                   ) : (
                     (txn.category ?? "Uncategorized")
                   )}
+                  {/* A refund is money back, not income — and when it reconciled
+                      a PAST month's budget, say which one, or the row's absence
+                      from this month's math reads as a bug. */}
+                  {txn.refundEffectiveMonth ? (
+                    <Text style={{ color: COLORS.success, fontWeight: "600" }}>
+                      {" · Refund"}
+                      {txn.refundEffectiveMonth !== txn.date.slice(0, 7)
+                        ? ` → ${formatRefundMonth(txn.refundEffectiveMonth)}`
+                        : ""}
+                    </Text>
+                  ) : null}
                   {txn.pending ? " · Pending" : ""}
                 </Text>
               </View>

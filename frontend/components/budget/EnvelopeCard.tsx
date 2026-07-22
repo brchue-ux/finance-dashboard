@@ -8,6 +8,13 @@ function fmt(n: number) {
   return `$${Math.abs(n).toFixed(0)}`;
 }
 
+/** Net spend can go below zero when refunds outweigh purchases (a returned
+ *  order from last month landing now). `fmt` strips the sign, which would make
+ *  -$190 read exactly like $190 spent — say "back" instead. */
+function fmtSpent(n: number) {
+  return n < 0 ? `${fmt(n)} back` : fmt(n);
+}
+
 interface EnvelopeCardProps {
   envelope: BudgetEnvelope;
   /** Opens envelope management; shown as the CTA when no target is set. */
@@ -32,7 +39,9 @@ function paceLabel(spent: number, expectedByNow: number): { text: string; color:
 }
 
 export function EnvelopeCard({ envelope, onSetTarget, onPress }: EnvelopeCardProps) {
-  const progress = envelope.allocated > 0 ? envelope.spent / envelope.allocated : 0;
+  // Clamped at 0: net-negative spend (refunds outweigh purchases) is shown in
+  // the text, not as a bar trying to render a negative width.
+  const progress = envelope.allocated > 0 ? Math.max(0, envelope.spent / envelope.allocated) : 0;
   // An in-progress month is where pace framing applies; a finished month
   // (fraction 1, or older navigation) falls back to plain spent-vs-target.
   const inProgress =
@@ -55,7 +64,7 @@ export function EnvelopeCard({ envelope, onSetTarget, onPress }: EnvelopeCardPro
               {envelope.name}
             </Text>
             <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
-              {fmt(envelope.spent)} spent · no budget set
+              {envelope.spent < 0 ? `${fmt(envelope.spent)} back` : `${fmt(envelope.spent)} spent`} · no budget set
             </Text>
           </View>
           {onSetTarget && (
@@ -82,7 +91,7 @@ export function EnvelopeCard({ envelope, onSetTarget, onPress }: EnvelopeCardPro
           <Text style={{ color: pace.color, fontSize: 13, fontWeight: "600" }}>{pace.text}</Text>
         ) : (
           <Text style={{ color: envelope.overBudget ? COLORS.danger : COLORS.textMuted, fontSize: 13 }}>
-            {fmt(envelope.spent)} / {fmt(envelope.allocated)}
+            {fmtSpent(envelope.spent)} / {fmt(envelope.allocated)}
           </Text>
         )}
       </View>
@@ -94,7 +103,7 @@ export function EnvelopeCard({ envelope, onSetTarget, onPress }: EnvelopeCardPro
       />
       {inProgress ? (
         <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
-          {fmt(envelope.spent)} of {fmt(envelope.allocated)} · {fmt(envelope.expectedByNow!)} expected by now
+          {fmtSpent(envelope.spent)} of {fmt(envelope.allocated)} · {fmt(envelope.expectedByNow!)} expected by now
         </Text>
       ) : (
         envelope.overBudget && (

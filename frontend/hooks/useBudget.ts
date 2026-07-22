@@ -81,6 +81,10 @@ export interface Transaction {
   /** Present when the transaction is split — the categories its amount is
    *  divided across. Null/absent when it is a single ordinary transaction. */
   splitCategories?: string[] | null;
+  /** "YYYY-MM" when this positive row is a refund — the month whose budget it
+   *  nets against (the original purchase's month when matched). Null/absent
+   *  for ordinary rows and genuine income. */
+  refundEffectiveMonth?: string | null;
 }
 
 export function useBudget(year: number, month: number) {
