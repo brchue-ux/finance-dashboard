@@ -277,6 +277,24 @@ export default function BudgetScreen() {
                 />
               </SwipeToDismiss>
             )}
+            {/* Applying the LAST card removes its host card with it — the flash
+                used to vanish along with the thing it was confirming. A stable
+                fallback host keeps the confirmation on screen. */}
+            {insights.flash && (!pinned || pinnedDismissed) && (
+              <View
+                style={{
+                  backgroundColor: COLORS.glassBg,
+                  borderWidth: 1,
+                  borderColor: COLORS.glassBorder,
+                  borderRadius: 12,
+                  paddingVertical: 10,
+                  paddingHorizontal: 14,
+                  marginBottom: 12,
+                }}
+              >
+                <Text style={{ color: COLORS.moneyIn, fontSize: 13 }}>{insights.flash}</Text>
+              </View>
+            )}
 
             {/* Group tiles — two per row, tap to zoom in */}
             <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
