@@ -10,6 +10,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { GradientText } from "@/components/ui/GradientText";
 import { AlertCard } from "@/components/alerts/AlertCard";
+import { DayCardList } from "@/components/ui/DayCardList";
 import { ConversationSheet } from "@/components/llm/ConversationSheet";
 import { COLORS } from "@/constants/theme";
 import { useAlerts, useMarkAlertRead, type UnifiedAlert } from "@/hooks/useAlerts";
@@ -85,35 +86,49 @@ export default function AlertsScreen() {
           </Pressable>
         </View>
 
+        {/* The app's day-card pattern (see DayCardList): days are the scanning
+            unit, and the space between cards replaces the old wall of
+            individually-boxed alerts. Unread stays its own section — attention
+            state outranks chronology. */}
         {unread.length > 0 && (
           <>
             <Text style={{ color: COLORS.textMuted, fontSize: 12, fontWeight: "600", marginBottom: 8, letterSpacing: 1 }}>
               UNREAD
             </Text>
-            {unread.map((alert) => (
-              <AlertCard
-                key={alert.id}
-                alert={alert}
-                onPress={() => openHolding(alert)}
-                onAnalyze={() => openAnalysis(alert)}
-              />
-            ))}
+            <DayCardList
+              items={unread}
+              dateOf={(a) => new Date(a.timestamp * 1000).toISOString().split("T")[0]}
+              keyOf={(a) => a.id}
+              renderItem={(alert) => (
+                <AlertCard
+                  flat
+                  alert={alert}
+                  onPress={() => openHolding(alert)}
+                  onAnalyze={() => openAnalysis(alert)}
+                />
+              )}
+            />
           </>
         )}
 
         {read.length > 0 && (
           <>
-            <Text style={{ color: COLORS.textMuted, fontSize: 12, fontWeight: "600", marginBottom: 8, marginTop: 16, letterSpacing: 1, opacity: 0.7 }}>
+            <Text style={{ color: COLORS.textMuted, fontSize: 12, fontWeight: "600", marginBottom: 8, marginTop: 8, letterSpacing: 1, opacity: 0.7 }}>
               EARLIER
             </Text>
-            {read.map((alert) => (
-              <AlertCard
-                key={alert.id}
-                alert={alert}
-                onPress={() => openHolding(alert)}
-                onAnalyze={() => openAnalysis(alert)}
-              />
-            ))}
+            <DayCardList
+              items={read}
+              dateOf={(a) => new Date(a.timestamp * 1000).toISOString().split("T")[0]}
+              keyOf={(a) => a.id}
+              renderItem={(alert) => (
+                <AlertCard
+                  flat
+                  alert={alert}
+                  onPress={() => openHolding(alert)}
+                  onAnalyze={() => openAnalysis(alert)}
+                />
+              )}
+            />
           </>
         )}
 

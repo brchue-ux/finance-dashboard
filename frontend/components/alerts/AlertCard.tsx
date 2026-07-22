@@ -6,12 +6,16 @@ interface AlertCardProps {
   alert: UnifiedAlert;
   onPress: () => void;
   onAnalyze: () => void;
+  /** Inside a DayCardList day card: the card container does the framing, so
+   *  the row draws no border/background of its own. */
+  flat?: boolean;
 }
 
 const SEVERITY_COLORS: Record<UnifiedAlert["severity"], string> = {
   red: "#EF4444",
   yellow: "#F59E0B",
-  green: "#22C55E",
+  // The feed's mint, not alarm-green — severity "green" is good news.
+  green: "#34D399",
 };
 
 const SOURCE_LABEL: Record<UnifiedAlert["source"], string> = {
@@ -27,19 +31,23 @@ function timeAgo(ts: number): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-export function AlertCard({ alert, onPress, onAnalyze }: AlertCardProps) {
+export function AlertCard({ alert, onPress, onAnalyze, flat }: AlertCardProps) {
   const dotColor = SEVERITY_COLORS[alert.severity];
 
   return (
     <Pressable
       onPress={onPress}
       style={{
-        backgroundColor: alert.unread ? COLORS.glassBg : "transparent",
-        borderWidth: 1,
-        borderColor: alert.unread ? COLORS.glassBorder : "transparent",
-        borderRadius: 12,
-        padding: 14,
-        marginBottom: 10,
+        ...(flat
+          ? { padding: 14 }
+          : {
+              backgroundColor: alert.unread ? COLORS.glassBg : "transparent",
+              borderWidth: 1,
+              borderColor: alert.unread ? COLORS.glassBorder : "transparent",
+              borderRadius: 12,
+              padding: 14,
+              marginBottom: 10,
+            }),
         flexDirection: "row",
         alignItems: "flex-start",
         gap: 12,
