@@ -265,6 +265,58 @@ export const learnedRules = sqliteTable(
   ]
 );
 
+// ── categorization_events ─────────────────────────────────────────────────────
+// Append-only log of the labeled examples the learning loop produces — the
+// durable asset, and the answer to "what happens when this needs to scale."
+//
+// A learned rule (learned_rules) is a lossy, per-user compression of one fact:
+// "this bank description belongs in this category." Every categorizer that could
+// ever replace or augment our hand-written matching — an ML model, a
+// merchant-entity resolver, an aggregator's enrichment — trains on that
+// (description, category) pair itself, at volume. learned_rules is the runtime
+// index; THIS is the training set. It is also the one thing that cannot be
+// reconstructed after the fact, so it is captured now under the same "capture
+// now, trim later, can't backfill" rule as job_runs and the snapshot tables.
+//
+// Never updated, never deleted: a row that is later re-corrected appends a new
+// event rather than overwriting, so the sequence of what the user decided — and
+// what the engine got wrong — survives intact.
+export const categorizationEvents = sqliteTable(
+  "categorization_events",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id),
+    // "manual_correction" — a row re-filed by hand (6a); "rule_saved" — a
+    // correction promoted to a standing rule (6b). Both are labels; a rule event
+    // additionally records the merchant boundary the user drew.
+    eventType: text("event_type").notNull(),
+    // The transaction the label came from, when there is one. Deliberately not a
+    // cascading FK: the label must outlive the row it came from — the whole
+    // reason this lives in its own table.
+    transactionId: text("transaction_id"),
+    // The raw bank description, verbatim — the model input.
+    rawDescription: text("raw_description").notNull(),
+    // normalizeDescription() of the raw string: today's best merchant handle.
+    // Stored so a future entity resolver can re-cluster labels by merchant
+    // without re-asking the user, even though right now it is an approximation.
+    merchantHandle: text("merchant_handle").notNull(),
+    // The user's OWN category word (the envelope name), verbatim. A future
+    // canonical taxonomy maps ONTO this; storing only a mapped value would throw
+    // away the raw word, which cannot be recovered.
+    category: text("category").notNull(),
+    // What the row was categorized as before the correction — signal about what
+    // the engine got wrong. Null when there is no prior value.
+    previousCategory: text("previous_category"),
+    // For rule_saved: the pattern the user approved — the boundary they drew.
+    // Null for a plain correction.
+    pattern: text("pattern"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [index("idx_categorization_events_user").on(t.userId, t.createdAt)]
+);
+
 // ── budget_envelopes ──────────────────────────────────────────────────────────
 export const budgetEnvelopes = sqliteTable("budget_envelopes", {
   id: text("id").primaryKey(),

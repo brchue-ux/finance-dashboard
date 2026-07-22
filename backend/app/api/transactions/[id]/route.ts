@@ -17,6 +17,7 @@ import { db } from "@/db";
 import { budgetEnvelopes, transactionSplits, transactions } from "@/db/schema";
 import { ownedTransaction } from "@/lib/transaction-access";
 import { resolveCategoryAssignment } from "@/lib/budget/category-assignment";
+import { recordCategorizationEvent } from "@/lib/budget/categorization-events";
 import { and, eq } from "drizzle-orm";
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -62,6 +63,18 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     .update(transactions)
     .set({ category: resolved.category, categorySource: "manual" })
     .where(eq(transactions.id, id));
+
+  // The label this correction represents — captured append-only so it survives
+  // a later re-correction, an envelope rename, or the row being deleted. This is
+  // the training example; the category we just wrote is only current state.
+  await recordCategorizationEvent({
+    userId: found.userId,
+    eventType: "manual_correction",
+    transactionId: id,
+    rawDescription: found.row.description,
+    category: resolved.category,
+    previousCategory: found.row.category,
+  });
 
   return NextResponse.json({
     ok: true,

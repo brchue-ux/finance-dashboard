@@ -21,6 +21,7 @@ export type OwnedTransaction = {
   row: {
     id: string;
     amount: number;
+    description: string;
     category: string | null;
     categorySource: string | null;
   };
@@ -38,6 +39,7 @@ export async function ownedTransaction(
     .select({
       id: transactions.id,
       amount: transactions.amount,
+      description: transactions.description,
       category: transactions.category,
       categorySource: transactions.categorySource,
     })

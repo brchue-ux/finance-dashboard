@@ -23,6 +23,7 @@ import { resolveCategoryAssignment } from "@/lib/budget/category-assignment";
 import { loadCategorizationContext } from "@/lib/budget/categorization-context";
 import { previewPattern } from "@/lib/budget/rule-proposal";
 import { refileRowsMatching } from "@/lib/budget/apply-learned-rule";
+import { recordCategorizationEvent } from "@/lib/budget/categorization-events";
 import { and, desc, eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 
@@ -73,9 +74,10 @@ export async function POST(req: NextRequest) {
   // Validate the provenance id if one was sent: it must be one of the user's own
   // transactions, so a saved rule can never point at a row that isn't theirs.
   let learnedFrom: string | null = null;
+  let sourceDescription: string | null = null;
   if (typeof body?.learnedFromTransactionId === "string") {
     const [owned] = await db
-      .select({ id: transactions.id })
+      .select({ id: transactions.id, description: transactions.description })
       .from(transactions)
       .where(and(eq(transactions.id, body.learnedFromTransactionId), eq(transactions.userId, userId)))
       .limit(1);
@@ -86,6 +88,7 @@ export async function POST(req: NextRequest) {
       );
     }
     learnedFrom = owned.id;
+    sourceDescription = owned.description;
   }
 
   // The count the user is agreeing to, computed the same way ./preview showed
@@ -124,6 +127,19 @@ export async function POST(req: NextRequest) {
     .from(learnedRules)
     .where(and(eq(learnedRules.userId, userId), eq(learnedRules.pattern, pattern)))
     .limit(1);
+
+  // The label this rule represents, append-only. rawDescription is the source
+  // transaction when the rule came from a correction, and the pattern itself
+  // otherwise (a rule saved straight from the widen/narrow box) — either way the
+  // (input, category) pair is preserved as training data.
+  await recordCategorizationEvent({
+    userId,
+    eventType: "rule_saved",
+    transactionId: learnedFrom,
+    rawDescription: sourceDescription ?? pattern,
+    category: resolved.category,
+    pattern,
+  });
 
   // Re-file with the context RELOADED so the new rule is in the learned set and
   // precedence (most-specific-wins across learned rules) is applied correctly.
