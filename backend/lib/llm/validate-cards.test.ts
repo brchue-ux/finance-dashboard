@@ -126,3 +126,20 @@ describe("diff claims — the live kept-card failure", () => {
     expect(diffClaimHolds(40, [40])).toBe(true);
   });
 });
+
+describe("requireGrounding: false — portfolio cards with web-sourced figures", () => {
+  it("keeps a card citing a market figure absent from context", () => {
+    const cards = [{ type: "insight", title: "Index high", body: "The S&P sits near $6,200 while you hold $38,551 cash." }];
+    const { cards: kept } = validateCards(cards, "cash 38551", { requireGrounding: false });
+    expect(kept).toHaveLength(1);
+  });
+  it("still drops an internally false relation without grounding", () => {
+    const cards = [{ type: "insight", title: "Bad math", body: "$376 is 50% over the $750 level." }];
+    const { cards: kept } = validateCards(cards, "", { requireGrounding: false });
+    expect(kept).toHaveLength(0);
+  });
+  it("default remains full grounding", () => {
+    const cards = [{ type: "insight", title: "Ghost", body: "You spent $999." }];
+    expect(validateCards(cards, "no numbers here").cards).toHaveLength(0);
+  });
+});

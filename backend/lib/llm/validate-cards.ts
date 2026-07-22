@@ -182,10 +182,23 @@ export function diffClaimHolds(claim: number, cardMoney: number[]): boolean {
   return false;
 }
 
+export interface ValidateOptions {
+  /** Grounding is only sound when the model saw ONLY our context: budget
+   *  cards declare no tools, so every real number must come from the data we
+   *  assembled. Portfolio cards run web search / indicator tools and may
+   *  legitimately cite market figures (index levels, rates) that exist
+   *  nowhere in the user's own data — grounding there would drop true cards.
+   *  Relation checks (%, $-diff) stay on for both: they test the card's
+   *  internal coherence, not its sources. */
+  requireGrounding?: boolean;
+}
+
 export function validateCards<T extends CardLike>(
   cards: T[],
-  contextText: string
+  contextText: string,
+  options: ValidateOptions = {}
 ): ValidationResult<T> {
+  const requireGrounding = options.requireGrounding ?? true;
   const contextNumbers = extractContextNumbers(contextText);
   const kept: T[] = [];
   const dropped: { title: string; reasons: string[] }[] = [];
@@ -197,9 +210,11 @@ export function validateCards<T extends CardLike>(
     const money = extractMoney(text);
     const reasons: string[] = [];
 
-    for (const x of money) {
-      if (!isGrounded(x, contextNumbers)) {
-        reasons.push(`$${x} not derivable from context`);
+    if (requireGrounding) {
+      for (const x of money) {
+        if (!isGrounded(x, contextNumbers)) {
+          reasons.push(`$${x} not derivable from context`);
+        }
       }
     }
     for (const claim of extractPercentClaims(text)) {
