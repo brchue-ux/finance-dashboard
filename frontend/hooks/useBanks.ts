@@ -45,12 +45,14 @@ export interface AccountTransactionsResponse {
   hasMore: boolean;
 }
 
-export function useAccountTransactions(accountId: string, limit = 100) {
+export function useAccountTransactions(accountId: string, limit = 100, highlight?: string) {
   return useQuery({
-    queryKey: ["account-transactions", accountId, limit],
+    queryKey: ["account-transactions", accountId, limit, highlight ?? null],
     queryFn: () =>
       api.get<AccountTransactionsResponse>(
-        `/api/banks/${accountId}/transactions?limit=${limit}`
+        `/api/banks/${accountId}/transactions?limit=${limit}` +
+          // The server serves the page CONTAINING this row, however old it is.
+          (highlight ? `&highlight=${encodeURIComponent(highlight)}` : "")
       ),
     enabled: !!accountId,
   });

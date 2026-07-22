@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { bankAccounts, budgetEnvelopes, transactions, transactionSplits } from "@/db/schema";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, gt, inArray, or } from "drizzle-orm";
 import { classifyRefunds } from "@/lib/budget/refunds";
 
 const DEFAULT_LIMIT = 50;
@@ -29,7 +29,37 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   const { searchParams } = new URL(req.url);
   const limit = Math.min(Math.max(parseInt(searchParams.get("limit") ?? String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, 1), MAX_LIMIT);
-  const offset = Math.max(parseInt(searchParams.get("offset") ?? "0", 10) || 0, 0);
+  let offset = Math.max(parseInt(searchParams.get("offset") ?? "0", 10) || 0, 0);
+
+  // A jump target ("View original purchase", notable cards) can be older than
+  // any fixed page. When the caller names the row it needs, serve the page
+  // CONTAINING it: rank = rows sorting before it under this route's own
+  // ORDER BY, then center the page there. Beats client-side fetch-until-found
+  // — one extra COUNT instead of N page round-trips.
+  const highlight = searchParams.get("highlight");
+  if (highlight && !searchParams.has("offset")) {
+    const [target] = await db
+      .select({ date: transactions.date, createdAt: transactions.createdAt })
+      .from(transactions)
+      .where(and(eq(transactions.id, highlight), eq(transactions.userId, authed.userId)))
+      .limit(1);
+    if (target) {
+      const [{ rank }] = await db
+        .select({ rank: count() })
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.accountId, accountId),
+            eq(transactions.userId, authed.userId),
+            or(
+              gt(transactions.date, target.date),
+              and(eq(transactions.date, target.date), gt(transactions.createdAt, target.createdAt))
+            )
+          )
+        );
+      offset = Math.max(0, rank - Math.floor(limit / 2));
+    }
+  }
 
   // Fetch one extra row to compute hasMore without a second COUNT query
   const rows = await db

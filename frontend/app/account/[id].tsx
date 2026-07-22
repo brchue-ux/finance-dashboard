@@ -19,12 +19,11 @@ import type { Transaction } from "@/hooks/useBudget";
 export default function AccountTransactionsScreen() {
   const { id, highlight } = useLocalSearchParams<{ id: string; highlight?: string }>();
   const router = useRouter();
-  // Arriving from a notable/insight card, the target transaction is often older
-  // than the 30 most recent — it was then absent from the response entirely, so
-  // the highlight matched nothing and this read as a generic list. Fetch deeper
-  // when we have a specific row to find.
+  // Arriving from a notable/insight card or a refund's "View original
+  // purchase", the target can be arbitrarily old. Passing the highlight lets
+  // the server serve the page CONTAINING it, so the jump can't out-age a page.
   const PAGE = highlight ? 200 : 30;
-  const { data, isLoading, isError } = useAccountTransactions(id ?? "", PAGE);
+  const { data, isLoading, isError } = useAccountTransactions(id ?? "", PAGE, highlight);
   // One sheet, ONE open Modal. Closing one Modal while opening another in the
   // same render hangs on Android — the second never presents and the dark
   // backdrop sticks. So the action list, the category picker and the split
