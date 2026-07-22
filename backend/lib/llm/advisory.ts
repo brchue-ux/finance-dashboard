@@ -8,6 +8,7 @@ import { SYSTEM_PROMPT, AUTO_CARD_INSTRUCTION } from "./prompts";
 import { assembleBudgetContext, assemblePortfolioContext } from "./context";
 import { anthropic, assembleTools } from "./tools";
 import { parseCards } from "./parse-cards";
+import { validateCards, type CardLike } from "./validate-cards";
 
 const MODEL = "claude-sonnet-4-6"; // change here to upgrade
 
@@ -46,7 +47,17 @@ export async function generateCards(userId: string, view: CardView) {
     stopWhen: stepCountIs(MAX_STEPS),
   });
 
-  return parseCards(text);
+  // Item 4: math checks the model. Cards whose cited dollar amounts aren't
+  // derivable from the context, or whose %-relations don't hold, are dropped
+  // — a card the arithmetic can't verify is worth less than no card.
+  const { cards, dropped } = validateCards(parseCards(text) as CardLike[], context);
+  if (dropped.length > 0) {
+    console.warn(
+      `[validate-cards] dropped ${dropped.length}/${dropped.length + cards.length} ${view} card(s):`,
+      dropped.map((d) => `"${d.title}" — ${d.reasons.join("; ")}`).join(" | ")
+    );
+  }
+  return cards;
 }
 
 /**

@@ -20,6 +20,7 @@ import { SYSTEM_PROMPT, AUTO_CARD_INSTRUCTION } from "@/lib/llm/prompts";
 import { assembleBudgetContext, assemblePortfolioContext } from "@/lib/llm/context";
 import { NO_INDICATOR_DATA_CLAUSE } from "@/lib/llm/tools";
 import { parseCards } from "@/lib/llm/parse-cards";
+import { validateCards, type CardLike } from "@/lib/llm/validate-cards";
 import { syncPlaidForUser } from "@/lib/sync/plaid";
 import { syncSnapTradeForUser } from "@/lib/sync/snaptrade";
 import { startJobRun, finishJobRun } from "@/lib/jobs/job-runs";
@@ -184,7 +185,21 @@ export async function pollPendingBatches(): Promise<void> {
           .join("");
 
         try {
-          const cards = parseCards(text);
+          // Item 4: numeric validation before caching. The batch request's
+          // original context string is gone by poll time, so re-assemble it —
+          // grounding tolerance absorbs the small drift, and a card citing
+          // numbers that no longer exist deserves dropping anyway.
+          const context =
+            view === "budget"
+              ? await assembleBudgetContext(run.userId!)
+              : await assemblePortfolioContext(run.userId!);
+          const { cards, dropped } = validateCards(parseCards(text) as CardLike[], context);
+          if (dropped.length > 0) {
+            console.warn(
+              `[nightly][validate-cards] dropped ${dropped.length} ${view} card(s):`,
+              dropped.map((d) => `"${d.title}" — ${d.reasons.join("; ")}`).join(" | ")
+            );
+          }
           await db
             .insert(llmAnalysisCache)
             .values({
@@ -200,7 +215,11 @@ export async function pollPendingBatches(): Promise<void> {
               set: { lastAnalyzedAt: now, output: JSON.stringify(cards) },
             });
           succeeded++;
-          items.push({ view, outcome: "ok", detail: `${cards.length} cards` });
+          items.push({
+            view,
+            outcome: "ok",
+            detail: `${cards.length} cards` + (dropped.length ? ` (${dropped.length} dropped by validation)` : ""),
+          });
         } catch (err) {
           failed++;
           // stop_reason distinguishes a truncated response from a model that
