@@ -72,48 +72,98 @@ function AccountGroups({ accounts }: { accounts: AccountGroup[] | Record<string,
       }}
     >
       {visible.map((g, i) => (
-        <View
-          key={g.type}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            paddingVertical: 12,
-            paddingHorizontal: 14,
-            borderTopWidth: i === 0 ? 0 : 1,
-            borderTopColor: COLORS.glassBorder,
-          }}
-        >
-          <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text style={{ color: COLORS.textPrimary, fontSize: 15, fontWeight: "500" }}>
-              {GROUP_LABELS[g.type] ?? g.type}
-              {g.accountCount > 1 ? (
-                <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
-                  {"  "}{g.accountCount} accounts
-                </Text>
-              ) : null}
-            </Text>
-            {g.managed ? (
-              <Text style={{ color: COLORS.brandPurple, fontSize: 12, marginTop: 2, fontWeight: "600" }}>
-                Managed by Wealthsimple
-              </Text>
-            ) : g.cash > 0 && g.positionsValue > 0 ? (
-              <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
-                {money(g.cash)} cash · {money(g.positionsValue)} holdings
+        <GroupRow key={g.type} group={g} first={i === 0} />
+      ))}
+    </View>
+  );
+}
+
+/**
+ * One rollup row; tapping expands the individual accounts underneath it —
+ * the one-press dive the rollup otherwise walls off. Wealthsimple gives all
+ * its accounts the same name, so rows are labeled by the number's last-4.
+ */
+function GroupRow({ group: g, first }: { group: AccountGroup; first: boolean }) {
+  const [open, setOpen] = useState(false);
+  const expandable = (g.accounts?.length ?? 0) > 0;
+
+  return (
+    <View style={{ borderTopWidth: first ? 0 : 1, borderTopColor: COLORS.glassBorder }}>
+      <Pressable
+        onPress={expandable ? () => setOpen((v) => !v) : undefined}
+        disabled={!expandable}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingVertical: 12,
+          paddingHorizontal: 14,
+        }}
+      >
+        <View style={{ flex: 1, paddingRight: 10 }}>
+          <Text style={{ color: COLORS.textPrimary, fontSize: 15, fontWeight: "500" }}>
+            {GROUP_LABELS[g.type] ?? g.type}
+            {g.accountCount > 1 ? (
+              <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
+                {"  "}{g.accountCount} accounts
               </Text>
             ) : null}
-          </View>
-          <Text
+          </Text>
+          {g.managed ? (
+            <Text style={{ color: COLORS.brandPurple, fontSize: 12, marginTop: 2, fontWeight: "600" }}>
+              Managed by Wealthsimple
+            </Text>
+          ) : g.cash > 0 && g.positionsValue > 0 ? (
+            <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+              {money(g.cash)} cash · {money(g.positionsValue)} holdings
+            </Text>
+          ) : null}
+        </View>
+        <Text
+          style={{
+            color: COLORS.textSecondary,
+            fontWeight: "600",
+            fontSize: 15,
+            fontVariant: ["tabular-nums"],
+          }}
+        >
+          {money(g.total)}
+        </Text>
+        {expandable && (
+          <Text style={{ color: COLORS.textMuted, fontSize: 13, marginLeft: 8 }}>
+            {open ? "⌄" : "›"}
+          </Text>
+        )}
+      </Pressable>
+      {open &&
+        g.accounts!.map((a) => (
+          <View
+            key={a.last4}
             style={{
-              color: COLORS.textSecondary,
-              fontWeight: "600",
-              fontSize: 15,
-              fontVariant: ["tabular-nums"],
+              flexDirection: "row",
+              alignItems: "center",
+              paddingVertical: 9,
+              paddingLeft: 28,
+              paddingRight: 14,
+              backgroundColor: "rgba(0,0,0,0.15)",
             }}
           >
-            {money(g.total)}
-          </Text>
-        </View>
-      ))}
+            <Text style={{ color: COLORS.textMuted, fontSize: 13, flex: 1 }}>
+              ···{a.last4}
+              {a.cash > 0 && a.cash < a.total ? (
+                <Text style={{ fontSize: 12 }}>  {money(a.cash)} cash</Text>
+              ) : null}
+            </Text>
+            <Text
+              style={{
+                color: COLORS.textSecondary,
+                fontSize: 13,
+                fontVariant: ["tabular-nums"],
+              }}
+            >
+              {money(a.total)}
+            </Text>
+          </View>
+        ))}
     </View>
   );
 }

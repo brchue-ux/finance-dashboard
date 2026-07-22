@@ -25,6 +25,9 @@ export interface AccountGroup {
   accountCount: number;
   /** Value with no itemized positions — run by Wealthsimple's robo. */
   managed: boolean;
+  /** Individual accounts behind the rollup (drill-down). Absent on snapshots
+   *  taken before the field existed. */
+  accounts?: { last4: string; total: number; cash: number }[];
 }
 
 export interface PortfolioResponse {

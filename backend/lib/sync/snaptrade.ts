@@ -96,10 +96,16 @@ export async function syncSnapTradeForUser(
         positionsValue: 0,
         accountCount: 0,
         managed: false,
+        accounts: [],
       };
       group.total += accountTotal;
       group.cash += accountCash;
       group.accountCount += 1;
+      group.accounts.push({
+        last4: (account.number ?? "").slice(-4),
+        total: accountTotal,
+        cash: accountCash,
+      });
       groups.set(accountType, group);
 
       for (const pos of positions) {
@@ -125,6 +131,7 @@ export async function syncSnapTradeForUser(
     // $1 of slack absorbs float noise from the three separately-reported sums.
     for (const g of groups.values()) {
       g.managed = g.total - g.cash - g.positionsValue > 1;
+      g.accounts.sort((a, b) => b.total - a.total);
     }
 
     const snapshotId = uuidv4();
@@ -183,6 +190,10 @@ export interface AccountGroup {
   accountCount: number;
   /** True when value exists that no position itemizes — Wealthsimple robo. */
   managed: boolean;
+  /** The individual accounts behind the rollup — the drill-down a tapped
+   *  group opens. Wealthsimple names every account identically, so the
+   *  number's last-4 is the only distinguishing label it offers. */
+  accounts: { last4: string; total: number; cash: number }[];
 }
 
 /**
