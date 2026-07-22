@@ -5,6 +5,12 @@
  * springs back. A small ✕ is a guaranteed fallback if the gesture feels finicky
  * on device.
  *
+ * Feel notes (the first cut was "janky" on device): release animations run on
+ * the NATIVE driver — transform and opacity qualify, and JS-thread animation
+ * stutter was the core of the complaint. Finger-follow updates still cross the
+ * bridge each frame; that is inherent to PanResponder (fixing it means taking
+ * the gesture-handler dependency, deliberately not done).
+ *
  * The responder only claims clearly-horizontal drags, so the surrounding
  * vertical ScrollView keeps scrolling normally.
  */
@@ -40,13 +46,26 @@ export function SwipeToDismiss({
       onPanResponderMove: (_, g) => translateX.setValue(g.dx),
       onPanResponderRelease: (_, g) => {
         if (Math.abs(g.dx) > FLING_DISTANCE || Math.abs(g.vx) > FLING_VELOCITY) {
-          Animated.timing(translateX, {
+          // Momentum-matched exit: a spring seeded with the release velocity
+          // carries the fling instead of restarting it — the fixed-duration
+          // linear slide was most of the perceived jank. overshootClamping
+          // stops it dead offscreen rather than bouncing there.
+          Animated.spring(translateX, {
             toValue: g.dx < 0 ? -SCREEN_W : SCREEN_W,
-            duration: 180,
-            useNativeDriver: false,
+            velocity: g.vx,
+            overshootClamping: true,
+            restDisplacementThreshold: 8,
+            restSpeedThreshold: 8,
+            useNativeDriver: true,
           }).start(() => onDismiss());
         } else {
-          Animated.spring(translateX, { toValue: 0, useNativeDriver: false }).start();
+          // Snappy return, not the loose default wobble.
+          Animated.spring(translateX, {
+            toValue: 0,
+            speed: 24,
+            bounciness: 5,
+            useNativeDriver: true,
+          }).start();
         }
       },
     })
