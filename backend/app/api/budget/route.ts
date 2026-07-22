@@ -12,7 +12,7 @@ import {
   transactionSplits,
   bankConnections,
 } from "@/db/schema";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, desc, gte, lte } from "drizzle-orm";
 import {
   summarizeEnvelopes,
   summarizeTotals,
@@ -58,7 +58,11 @@ export async function GET(req: NextRequest) {
           gte(transactions.date, startDate),
           lte(transactions.date, endDate)
         )
-      ),
+      )
+      // The feed renders these directly and groups by day; without an explicit
+      // order they arrive in INSERTION order (import batches are grouped by
+      // merchant, not date), which scrambled the list's chronology.
+      .orderBy(desc(transactions.date), desc(transactions.createdAt)),
     db
       .select({
         institution: bankConnections.institutionName,
