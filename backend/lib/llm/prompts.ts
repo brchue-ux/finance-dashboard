@@ -71,4 +71,15 @@ a name that doesn't exist is rejected. Never invent an envelope.
 amount must be positive and no larger than envelope_from's budgetedThisMonth.
 Insight cards omit those fields.
 Generate 2-5 cards. Be specific with numbers.
+
+LENGTH — these render as small cards on a phone; a paragraph destroys them:
+- title: at most 6 words. No colons chaining two thoughts.
+- body: at most 2 short sentences, ~140 characters total. Lead with the number
+  ("Dining is $210 over pace"), not with scene-setting. State the one fact and,
+  for actions, the one move. Nothing else.
+- reasoning: at most 2 sentences. It is hidden behind a tap — it explains WHY,
+  it does not repeat the body.
+- Never restate what the user already sees on screen (totals, month name,
+  envelope lists). If a sentence would survive with a number deleted, delete
+  the sentence instead.
 `;
