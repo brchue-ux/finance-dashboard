@@ -41,9 +41,12 @@ export async function syncSnapTradeForUser(
 
     let totalValue = 0;
     let cashValue = 0;
-    const accountBreakdown: Record<string, number> = {
-      tfsa: 0, rrsp: 0, non_reg: 0, crypto: 0,
-    };
+    // Per-account-type rollup, replacing the old fixed 4-bucket breakdown that
+    // filed managed RESPs, 12 cash buckets and the personal account together
+    // as one opaque "non_reg" number. `managed` is DERIVED: value the account
+    // reports but no position itemizes is money run by Wealthsimple's robo —
+    // the UI must say so, or the missing line items read as a sync bug.
+    const groups = new Map<string, AccountGroup>();
     const allHoldings: Array<{
       ticker: string; name: string; quantity: number;
       costBasis: number; marketValue: number; openPnl: number | null; accountType: string;
@@ -74,7 +77,6 @@ export async function syncSnapTradeForUser(
       // ~$78k Wealthsimple relationship at $5.18 (verified live 2026-07-22).
       const accountTotal = account.balance?.total?.amount ?? 0;
       totalValue += accountTotal;
-      accountBreakdown[accountType] = (accountBreakdown[accountType] ?? 0) + accountTotal;
 
       // Cash split out per user decision: totalValue is everything at the
       // brokerage; cashValue lets screens show invested-vs-cash honestly.
@@ -83,10 +85,26 @@ export async function syncSnapTradeForUser(
         userId: conn.snaptradeUserId,
         userSecret,
       });
-      for (const b of balanceRes.data ?? []) cashValue += b.cash ?? 0;
+      let accountCash = 0;
+      for (const b of balanceRes.data ?? []) accountCash += b.cash ?? 0;
+      cashValue += accountCash;
+
+      const group = groups.get(accountType) ?? {
+        type: accountType,
+        total: 0,
+        cash: 0,
+        positionsValue: 0,
+        accountCount: 0,
+        managed: false,
+      };
+      group.total += accountTotal;
+      group.cash += accountCash;
+      group.accountCount += 1;
+      groups.set(accountType, group);
 
       for (const pos of positions) {
         const mv = (pos.units ?? 0) * ((pos.price ?? 0));
+        group.positionsValue += mv;
 
         // v10 SDK nesting: Position.symbol (PositionSymbol) → .symbol (UniversalSymbol) → .symbol (ticker string)
         allHoldings.push({
@@ -103,6 +121,12 @@ export async function syncSnapTradeForUser(
       }
     }
 
+    // Value neither cash nor an itemized position = run by the robo.
+    // $1 of slack absorbs float noise from the three separately-reported sums.
+    for (const g of groups.values()) {
+      g.managed = g.total - g.cash - g.positionsValue > 1;
+    }
+
     const snapshotId = uuidv4();
     await db.insert(portfolioSnapshots).values({
       id: snapshotId,
@@ -110,7 +134,9 @@ export async function syncSnapTradeForUser(
       snapshotAt: now,
       totalValue,
       cashValue,
-      accounts: JSON.stringify(accountBreakdown),
+      // New shape: an ARRAY of typed groups (biggest first). Readers detect
+      // array-vs-object to keep rendering pre-2026-07-22 snapshots.
+      accounts: JSON.stringify([...groups.values()].sort((a, b) => b.total - a.total)),
       createdAt: now,
     });
 
@@ -147,17 +173,33 @@ export async function syncSnapTradeForUser(
   }
 }
 
+/** One row of the snapshot's `accounts` JSON — an account-type rollup. */
+export interface AccountGroup {
+  type: string;
+  total: number;
+  cash: number;
+  /** Sum of itemized position market values in this group. */
+  positionsValue: number;
+  accountCount: number;
+  /** True when value exists that no position itemizes — Wealthsimple robo. */
+  managed: boolean;
+}
+
 /**
- * Prefers the API's `raw_type` ("TFSA", "RRSP", "CRYPTO", "MSB", "RESP",
- * "FHSA", "PERSONAL") — Wealthsimple names every account "Wealthsimple Trade
- * <TYPE>", so the old name-sniffing worked only by accident. Everything
- * without its own breakdown bucket (RESP/FHSA/cash/personal) rolls into
- * non_reg, matching the fixed accountBreakdown keys downstream.
+ * Maps the API's `raw_type` ("TFSA", "RRSP", "CRYPTO", "MSB", "RESP", "FHSA",
+ * "PERSONAL") to a display type — Wealthsimple names every account
+ * "Wealthsimple Trade <TYPE>", so the old name-sniffing worked only by
+ * accident. Each real type keeps its own identity now; MSB is Wealthsimple's
+ * cash product.
  */
-function inferAccountType(rawTypeOrName: string): "tfsa" | "rrsp" | "non_reg" | "crypto" {
+function inferAccountType(rawTypeOrName: string): string {
   const lower = rawTypeOrName.toLowerCase();
   if (lower.includes("tfsa")) return "tfsa";
   if (lower.includes("rrsp")) return "rrsp";
   if (lower.includes("crypto")) return "crypto";
+  if (lower.includes("resp")) return "resp";
+  if (lower.includes("fhsa")) return "fhsa";
+  if (lower.includes("msb")) return "cash";
+  if (lower.includes("personal")) return "personal";
   return "non_reg";
 }

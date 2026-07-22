@@ -16,12 +16,25 @@ export interface PortfolioSnapshot {
   totalValue: number;
 }
 
+/** One account-type rollup from the sync (post-2026-07-22 snapshots). */
+export interface AccountGroup {
+  type: string;
+  total: number;
+  cash: number;
+  positionsValue: number;
+  accountCount: number;
+  /** Value with no itemized positions — run by Wealthsimple's robo. */
+  managed: boolean;
+}
+
 export interface PortfolioResponse {
   connection: { status: string; lastSyncedAt: number | null } | null;
   latestSnapshot: {
     totalValue: number;
     cashValue: number;
-    accounts: { tfsa: number; rrsp: number; non_reg: number; crypto: number };
+    /** Array of groups on new snapshots; legacy snapshots carry the old
+     *  fixed-bucket object — render code must Array.isArray-guard. */
+    accounts: AccountGroup[] | Record<string, number>;
   } | null;
   holdings: Holding[];
   snapshotHistory: PortfolioSnapshot[];
