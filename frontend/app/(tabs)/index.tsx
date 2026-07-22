@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { GradientText } from "@/components/ui/GradientText";
+import { HeaderIconButton } from "@/components/ui/HeaderIconButton";
 import { StatCard } from "@/components/ui/StatCard";
 import { MonthNav } from "@/components/budget/MonthNav";
 import { EnvelopeCard } from "@/components/budget/EnvelopeCard";
@@ -111,51 +112,33 @@ export default function BudgetScreen() {
         {/* Header */}
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <GradientText style={{ fontSize: 28, fontWeight: "800" }}>Budget</GradientText>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
             {/* Importing a statement is a routine, recurring action, not a
                 one-time setup chore — it stays one tap from the budget rather
                 than buried in Settings or behind the bank-connect flow. */}
-            <Pressable
+            <HeaderIconButton
+              glyph="↥"
               onPress={() => router.push("/import")}
-              hitSlop={10}
               accessibilityLabel="Import a CSV or Excel file"
-            >
-              <Text style={{ fontSize: 20 }}>⬆️</Text>
-            </Pressable>
-            <Pressable onPress={() => router.push("/manage-envelopes")} hitSlop={10}>
-              <Text style={{ fontSize: 20 }}>🗂️</Text>
-            </Pressable>
+            />
+            <HeaderIconButton
+              glyph="▦"
+              onPress={() => router.push("/manage-envelopes")}
+              accessibilityLabel="Manage categories"
+            />
             {/* Always-available entry to Insights — the way back after the pinned
                 card is swiped away. Badged with the open-card count. */}
-            <Pressable
+            <HeaderIconButton
+              glyph="✦"
               onPress={() => router.push({ pathname: "/insights", params: { year, month } })}
-              hitSlop={10}
-            >
-              <Text style={{ fontSize: 20 }}>💡</Text>
-              {insights.visibleCards.length > 0 && (
-                <View
-                  style={{
-                    position: "absolute",
-                    top: -4,
-                    right: -6,
-                    minWidth: 15,
-                    height: 15,
-                    borderRadius: 8,
-                    paddingHorizontal: 3,
-                    backgroundColor: COLORS.brandPurple,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Text style={{ color: "#fff", fontSize: 9, fontWeight: "700" }}>
-                    {insights.visibleCards.length}
-                  </Text>
-                </View>
-              )}
-            </Pressable>
-            <Pressable onPress={() => router.push("/reports")} hitSlop={10}>
-              <Text style={{ fontSize: 20 }}>📊</Text>
-            </Pressable>
+              badge={insights.visibleCards.length}
+              accessibilityLabel="Insights"
+            />
+            <HeaderIconButton
+              glyph="∿"
+              onPress={() => router.push("/reports")}
+              accessibilityLabel="Reports"
+            />
           </View>
         </View>
 

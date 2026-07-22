@@ -58,7 +58,7 @@ export function HoldingRow({ holding, onPress }: HoldingRowProps) {
         <Text style={{ color: COLORS.textPrimary, fontWeight: "600", fontSize: 15 }}>
           ${holding.marketValue.toFixed(2)}
         </Text>
-        <Text style={{ color: isPositive ? COLORS.success : COLORS.danger, fontSize: 12 }}>
+        <Text style={{ color: isPositive ? COLORS.moneyIn : COLORS.danger, fontSize: 12 }}>
           {isPositive ? "+" : ""}${pnl.toFixed(2)} ({isPositive ? "+" : ""}{pnlPct.toFixed(1)}%)
         </Text>
       </View>

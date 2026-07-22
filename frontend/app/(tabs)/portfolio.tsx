@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { GradientText } from "@/components/ui/GradientText";
+import { HeaderIconButton } from "@/components/ui/HeaderIconButton";
 import { HoldingRow } from "@/components/portfolio/HoldingRow";
 import { LLMCards } from "@/components/budget/LLMCards";
 import { ConversationSheet } from "@/components/llm/ConversationSheet";
@@ -307,9 +308,7 @@ export default function PortfolioScreen() {
         {/* Header */}
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <GradientText style={{ fontSize: 28, fontWeight: "800" }}>Portfolio</GradientText>
-          <Pressable onPress={() => router.push("/reports")} hitSlop={10}>
-            <Text style={{ fontSize: 20 }}>📊</Text>
-          </Pressable>
+          <HeaderIconButton glyph="∿" onPress={() => router.push("/reports")} accessibilityLabel="Reports" />
         </View>
 
         {/* Portfolio hero */}

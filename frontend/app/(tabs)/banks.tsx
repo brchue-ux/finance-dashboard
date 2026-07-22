@@ -35,7 +35,7 @@ function formatBalance(account: BankAccount): string {
 function statusPill(status: string): { label: string; color: string } | null {
   switch (status) {
     case "active":
-      return { label: "● Live", color: COLORS.success };
+      return { label: "● Live", color: COLORS.moneyIn };
     case "relink_required":
     case "reconnect_required":
       return { label: "⚠ Relink", color: COLORS.warning };
