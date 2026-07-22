@@ -27,6 +27,8 @@ import {
   budgetEnvelopes,
   envelopeAllocations,
   bankBalanceSnapshots,
+  portfolioSnapshots,
+  holdings,
 } from "./schema";
 import { categorize } from "../lib/categorization";
 import { DEFAULT_ENVELOPE_GROUPS } from "../lib/budget/groups";
@@ -228,6 +230,8 @@ async function main() {
   // Any table that gains a writer has to be added here too.
   await db.delete(transactionSplits).where(eq(transactionSplits.userId, userId));
   await db.delete(envelopeAllocations).where(eq(envelopeAllocations.userId, userId));
+  await db.delete(holdings).where(eq(holdings.userId, userId));
+  await db.delete(portfolioSnapshots).where(eq(portfolioSnapshots.userId, userId));
   await db.delete(transactions).where(eq(transactions.userId, userId));
   await db.delete(bankBalanceSnapshots).where(eq(bankBalanceSnapshots.userId, userId));
   await db.delete(bankAccounts).where(eq(bankAccounts.userId, userId));
@@ -469,6 +473,71 @@ async function main() {
     }
   );
 
+  // ── transfers: the app's biggest money-math feature, previously unexercised
+  // by test data (item 10). A credit-card payment is one event seen twice —
+  // positive on the card, negative on chequing — and counting either side
+  // made $90k of phantom income on real data. Descriptions are the REAL bank
+  // strings; transfer_source='rule' mirrors how the real rows are marked
+  // (there is no live auto-marking pipeline — patterns are propose-only).
+  for (let monthsBack = 3; monthsBack >= 0; monthsBack--) {
+    const base = new Date(today.getFullYear(), today.getMonth() - monthsBack, 1);
+    const year = base.getFullYear();
+    const month = base.getMonth();
+    const day = monthsBack === 0 ? Math.min(today.getDate(), 3) : 21;
+    const payment = 1200 + Math.round(rng() * 900);
+    const date = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const transferBase = {
+      userId,
+      plaidTransactionId: null,
+      category: "uncategorized",
+      pending: 0,
+      createdAt: now,
+      isoCurrencyCode: "CAD" as const,
+      transferSource: "rule" as const,
+    };
+    txns.push(
+      {
+        ...transferBase,
+        id: randomUUID(),
+        accountId: chequingId,
+        date,
+        description: "Bill Payment - ROYAL BANK VISA-V",
+        merchantName: `${TEST_TAG} CC payment (chequing side)`,
+        amount: -payment,
+      },
+      {
+        ...transferBase,
+        id: randomUUID(),
+        accountId: cardId,
+        date,
+        description: "PAYMENT - THANK YOU / PAI EMENT - MERCI",
+        merchantName: `${TEST_TAG} CC payment (card side)`,
+        amount: payment,
+      }
+    );
+  }
+
+  // ── out-of-coverage rows: real, categorized, visible per-account, but held
+  // out of every month total (the period predates data from other accounts).
+  // Value string matches the real DB's convention.
+  const coverageMonth = new Date(today.getFullYear(), today.getMonth() - 6, 15);
+  const covDate = `${coverageMonth.getFullYear()}-${String(coverageMonth.getMonth() + 1).padStart(2, "0")}-15`;
+  txns.push({
+    id: randomUUID(),
+    userId,
+    accountId: chequingId,
+    plaidTransactionId: null,
+    date: covDate,
+    description: "AMZN Mktp CA WWW.AMAZON.CA",
+    merchantName: `${TEST_TAG} pre-coverage purchase`,
+    amount: -64.99,
+    category: categoryFor("AMZN Mktp CA WWW.AMAZON.CA"),
+    pending: 0,
+    createdAt: now,
+    isoCurrencyCode: "CAD",
+    coverage: "before_bank_data",
+  });
+
   await db.insert(transactions).values(txns);
 
   // ── balance snapshots, so Reports' net-worth trend has a series ─────────
@@ -500,6 +569,89 @@ async function main() {
   }
   await db.insert(bankBalanceSnapshots).values(snaps);
 
+  // ── portfolio: mirrors the REAL Wealthsimple structure the first live
+  // connect revealed (item 10: fixtures follow reality, reality doesn't bend
+  // to fixtures) — a managed RESP group that itemizes NO positions, cash
+  // buckets with no tickers, and a TFSA whose only itemized holding is a
+  // fractional VEQT.TO. This is exactly the shape that made positions-only
+  // valuation report $5.18 for a ~$78k relationship on real data; with it
+  // seeded, that bug class is visible in test mode. No wealthsimple_connections
+  // row on purpose: the sync endpoint skips cleanly ("no_connection") instead
+  // of calling SnapTrade with fake credentials.
+  const mkAccount = (idSuffix: string, last4: string, total: number, cash: number) => ({
+    id: `test-ws-${idSuffix}`,
+    last4,
+    total,
+    cash,
+  });
+  const portfolioDays = 30;
+  const portSnaps: (typeof portfolioSnapshots.$inferInsert)[] = [];
+  let latestPortfolioId = "";
+  for (let daysBack = portfolioDays - 1; daysBack >= 0; daysBack--) {
+    const at = Math.floor(Date.now() / 1000) - daysBack * 86400;
+    // Deterministic drift: managed value wanders, cash steps down mid-month.
+    const drift = Math.sin(daysBack / 5) * 220 + (portfolioDays - daysBack) * 8;
+    const respTotal = 21500 + drift;
+    const cashA = 6200 - (daysBack < 12 ? 400 : 0);
+    const cashB = 1850;
+    const tfsaCash = 900;
+    const veqt = 5.18 + (portfolioDays - daysBack) * 0.01;
+    const groups = [
+      {
+        type: "resp",
+        total: respTotal,
+        cash: 61.5,
+        positionsValue: 0,
+        accountCount: 1,
+        managed: true, // value with no itemized positions — the robo shape
+        accounts: [mkAccount("resp", "r3sp", respTotal, 61.5)],
+      },
+      {
+        type: "cash",
+        total: cashA + cashB,
+        cash: cashA + cashB,
+        positionsValue: 0,
+        accountCount: 2,
+        managed: false,
+        accounts: [mkAccount("cash-a", "chq1", cashA, cashA), mkAccount("cash-b", "sav2", cashB, cashB)],
+      },
+      {
+        type: "tfsa",
+        total: tfsaCash + veqt,
+        cash: tfsaCash,
+        positionsValue: veqt,
+        accountCount: 1,
+        managed: false,
+        accounts: [mkAccount("tfsa", "tf5a", tfsaCash + veqt, tfsaCash)],
+      },
+    ];
+    const snapId = randomUUID();
+    latestPortfolioId = snapId;
+    portSnaps.push({
+      id: snapId,
+      userId,
+      snapshotAt: at,
+      totalValue: groups.reduce((s, g) => s + g.total, 0),
+      cashValue: groups.reduce((s, g) => s + g.cash, 0),
+      accounts: JSON.stringify(groups),
+      createdAt: at,
+    });
+  }
+  await db.insert(portfolioSnapshots).values(portSnaps);
+  await db.insert(holdings).values({
+    id: randomUUID(),
+    userId,
+    snapshotId: latestPortfolioId,
+    ticker: "VEQT.TO", // Yahoo-suffixed, exactly as SnapTrade returns it live
+    name: `${TEST_TAG} Vanguard All-Equity ETF Portfolio`,
+    quantity: 0.0848,
+    costBasis: 38.7,
+    marketValue: 5.18 + portfolioDays * 0.01,
+    openPnl: 1.9,
+    accountType: "tfsa",
+    createdAt: Math.floor(Date.now() / 1000),
+  });
+
   console.log(`Seeded TEST data into ${process.env.DATABASE_URL}`);
   console.log(`  user         ${email}`);
   console.log(`  envelopes    ${envelopeRows.length} (targets set)`);
@@ -515,6 +667,10 @@ async function main() {
       `\n                "not in any envelope" path has something to show`
   );
   console.log(`  snapshots    ${snaps.length}`);
+  const transferCount = txns.filter((t) => t.transferSource).length;
+  console.log(`  transfers    ${transferCount} rows (${transferCount / 2} CC-payment pairs, both sides)`);
+  console.log(`  coverage     ${txns.filter((t) => t.coverage).length} out-of-coverage row(s)`);
+  console.log(`  portfolio    ${portSnaps.length} snapshots (managed RESP + cash + TFSA w/ VEQT.TO)`);
   console.log(
     `\nEvery merchant categorised as this fixture asserts.` +
       `\nGenerated rows carry the ${TEST_TAG} marker on merchantName and account names;` +

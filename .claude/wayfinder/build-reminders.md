@@ -186,7 +186,19 @@ to an exchange suffix before calling market data.
 
 ---
 
-### 10. Rebuild the test seed around a realistic taxonomy
+### 10. Rebuild the test seed around a realistic taxonomy — ✅ RESOLVED 2026-07-22
+**The envelope/merchant half had already converged (16 real envelopes at exact parity with
+the real taxonomy, real Canadian merchant strings). The 2026-07-22 pass closed the actual
+remaining gaps, each verified through the real summarize functions:** (1) transfers — 4
+CC-payment pairs with the real bank strings ("PAYMENT - THANK YOU / PAI EMENT - MERCI"),
+both sides, `transfer_source='rule'`; previously ZERO transfer rows existed, leaving the
+app's biggest money-math feature untested in test mode. (2) out-of-coverage row
+(`before_bank_data`), excluded from totals. (3) portfolio: 30 snapshots mirroring the REAL
+Wealthsimple shape the live connect revealed — managed RESP (no positions), cash buckets,
+TFSA with fractional VEQT.TO — so the "$5.18 for a $78k relationship" bug class is now
+visible in test mode. No wealthsimple_connections row (sync skips cleanly). Cross-month
+refund pair + interest row were added earlier the same day.
+
 **Phase:** Test fixtures. Raised by the user 2026-07-21: test data should be *accurate user
 data*, with the build working around it — not data shaped so testing passes.
 **Context:** `db/seed-test.ts` still generates 7 synthetic envelopes with `[TEST]` merchants
