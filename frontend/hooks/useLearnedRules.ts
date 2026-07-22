@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
 /**
@@ -23,6 +23,43 @@ export interface SaveLearnedRuleResponse extends RulePreview {
   category: string;
   /** How many rows actually changed — manual and split rows are left alone. */
   refiled: number;
+}
+
+/** One saved learned rule, as the management list shows it. */
+export interface LearnedRule {
+  id: string;
+  pattern: string;
+  category: string;
+  learnedFromTransactionId: string | null;
+  catchesAtCreation: number | null;
+  createdAt: number;
+}
+
+/** The user's saved rules, newest first. */
+export function useLearnedRulesList() {
+  return useQuery({
+    queryKey: ["learned-rules"],
+    queryFn: () => api.get<{ rules: LearnedRule[] }>("/api/budget/learned-rules"),
+  });
+}
+
+/**
+ * Delete a learned rule. Undoing is not just forgetting the rule: the server
+ * re-derives the rows it had captured without it, so budget/report/feed caches
+ * move exactly as they did on save.
+ */
+export function useDeleteLearnedRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.del<{ ok: true; deleted: string; refiled: number }>(`/api/budget/learned-rules/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["budget"] });
+      qc.invalidateQueries({ queryKey: ["reports"] });
+      qc.invalidateQueries({ queryKey: ["account-transactions"] });
+      qc.invalidateQueries({ queryKey: ["learned-rules"] });
+    },
+  });
 }
 
 /**

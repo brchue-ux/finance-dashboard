@@ -189,6 +189,24 @@ export default function ManageEnvelopesScreen() {
               </Pressable>
             </GlassCard>
 
+            {/* Learned rules — the corrections you promoted to standing rules */}
+            <Pressable onPress={() => router.push("/manage-learned-rules")}>
+              <GlassCard style={{ marginTop: 12 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <View style={{ flex: 1, paddingRight: 12 }}>
+                    <Text style={{ color: COLORS.textPrimary, fontWeight: "600", fontSize: 15 }}>
+                      Learned rules
+                    </Text>
+                    <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 6 }}>
+                      Rules the app learned from your corrections. They take priority
+                      over the built-in matching. View or remove them.
+                    </Text>
+                  </View>
+                  <Text style={{ color: COLORS.brandPurple, fontSize: 22 }}>›</Text>
+                </View>
+              </GlassCard>
+            </Pressable>
+
             {inactive.length > 0 && (
               <View style={{ marginTop: 20 }}>
                 <Text style={{ color: COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
