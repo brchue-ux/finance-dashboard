@@ -40,7 +40,7 @@ export async function syncSnapTradeForUser(
     const accounts = accountsRes.data ?? [];
 
     let totalValue = 0;
-    const cashValue = 0;
+    let cashValue = 0;
     const accountBreakdown: Record<string, number> = {
       tfsa: 0, rrsp: 0, non_reg: 0, crypto: 0,
     };
@@ -50,19 +50,43 @@ export async function syncSnapTradeForUser(
     }> = [];
 
     for (const account of accounts) {
-      const holdingsRes = await snaptrade.accountInformation.getUserHoldings({
+      // Wealthsimple reports every account ever opened; closed ones can hold
+      // no positions, and each poll is a call against the rate limit.
+      if (account.status === "closed") continue;
+
+      // The combined holdings endpoint is retired for this API tier — it now
+      // returns 410 "This endpoint is no longer available for your account"
+      // (verified live 2026-07-22). Positions is the granular replacement and
+      // returns the same Position shape this loop already reads.
+      const positionsRes = await snaptrade.accountInformation.getUserAccountPositions({
         accountId: account.id!,
         userId: conn.snaptradeUserId,
         userSecret,
       });
 
-      const accountType = inferAccountType(account.name ?? "");
-      const positions = holdingsRes.data?.positions ?? [];
+      const accountType = inferAccountType(account.raw_type ?? account.name ?? "");
+      const positions = positionsRes.data ?? [];
+
+      // The account's own total is the authoritative value, NOT the sum of
+      // positions: Wealthsimple MANAGED accounts (this household's RESPs,
+      // ~$19.7k each) report no itemized positions at all, and cash accounts
+      // hold real money with no tickers. Summing positions alone valued a
+      // ~$78k Wealthsimple relationship at $5.18 (verified live 2026-07-22).
+      const accountTotal = account.balance?.total?.amount ?? 0;
+      totalValue += accountTotal;
+      accountBreakdown[accountType] = (accountBreakdown[accountType] ?? 0) + accountTotal;
+
+      // Cash split out per user decision: totalValue is everything at the
+      // brokerage; cashValue lets screens show invested-vs-cash honestly.
+      const balanceRes = await snaptrade.accountInformation.getUserAccountBalance({
+        accountId: account.id!,
+        userId: conn.snaptradeUserId,
+        userSecret,
+      });
+      for (const b of balanceRes.data ?? []) cashValue += b.cash ?? 0;
 
       for (const pos of positions) {
         const mv = (pos.units ?? 0) * ((pos.price ?? 0));
-        totalValue += mv;
-        accountBreakdown[accountType] = (accountBreakdown[accountType] ?? 0) + mv;
 
         // v10 SDK nesting: Position.symbol (PositionSymbol) → .symbol (UniversalSymbol) → .symbol (ticker string)
         allHoldings.push({
@@ -123,8 +147,15 @@ export async function syncSnapTradeForUser(
   }
 }
 
-function inferAccountType(accountName: string): "tfsa" | "rrsp" | "non_reg" | "crypto" {
-  const lower = accountName.toLowerCase();
+/**
+ * Prefers the API's `raw_type` ("TFSA", "RRSP", "CRYPTO", "MSB", "RESP",
+ * "FHSA", "PERSONAL") — Wealthsimple names every account "Wealthsimple Trade
+ * <TYPE>", so the old name-sniffing worked only by accident. Everything
+ * without its own breakdown bucket (RESP/FHSA/cash/personal) rolls into
+ * non_reg, matching the fixed accountBreakdown keys downstream.
+ */
+function inferAccountType(rawTypeOrName: string): "tfsa" | "rrsp" | "non_reg" | "crypto" {
+  const lower = rawTypeOrName.toLowerCase();
   if (lower.includes("tfsa")) return "tfsa";
   if (lower.includes("rrsp")) return "rrsp";
   if (lower.includes("crypto")) return "crypto";
