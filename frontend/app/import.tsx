@@ -19,12 +19,14 @@ import { GradientText } from "@/components/ui/GradientText";
 import { COLORS } from "@/constants/theme";
 import {
   useImportCsv,
+  useImportPreviewCsv,
   useConnectGoogleSheets,
   useConnectExcel,
   readFileText,
   parseCsvHeaders,
   amountSignProfile,
   type CsvMapping,
+  type ImportPreview,
 } from "@/hooks/useImport";
 
 type Field = keyof CsvMapping;
@@ -58,8 +60,24 @@ export default function ImportScreen() {
   // null = not yet answered; only consulted when the file's signs are uniform.
   const [signChoice, setSignChoice] = useState<"spending" | "deposits" | null>(null);
   const [activeField, setActiveField] = useState<Field | null>(null);
+  // Item 7: when the file's category column has entries matching no existing
+  // category, the import pauses on a review step instead of committing.
+  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  // Per unmatched source category: an existing category name, or null = keep
+  // the file's word as-is (imports verbatim, counts toward no budget).
+  const [catMappings, setCatMappings] = useState<Record<string, string | null>>({});
+  const [activeUnmatched, setActiveUnmatched] = useState<string | null>(null);
+  // A finished import renders in-app (what landed, what was skipped, which
+  // matches were applied) instead of a bare native alert.
+  const [result, setResult] = useState<{
+    imported: number;
+    duplicates: number;
+    unreadable: number;
+    recap: { source: string; target: string; rows: number }[];
+  } | null>(null);
 
   const importCsv = useImportCsv();
+  const previewCsv = useImportPreviewCsv();
   const connectGoogle = useConnectGoogleSheets();
   const connectExcel = useConnectExcel();
 
@@ -87,7 +105,7 @@ export default function ImportScreen() {
     }
   }
 
-  function runImport() {
+  function commitImport(categoryMappings?: Record<string, string>) {
     if (!csv || !mapping.date || !mapping.description || !mapping.amount) return;
     importCsv.mutate(
       {
@@ -96,18 +114,68 @@ export default function ImportScreen() {
         // When the file is uniform-sign the explicit answer decides; otherwise
         // the manual toggle still applies.
         negateAmounts: needsSignAnswer ? signChoice === "spending" : negate,
+        ...(categoryMappings && Object.keys(categoryMappings).length > 0
+          ? { categoryMappings }
+          : {}),
       },
       {
         onSuccess: (r) => {
-          const bits = [`Imported ${r.imported}`];
-          if (r.duplicates) bits.push(`${r.duplicates} already imported`);
-          if (r.unparseableRows?.length) bits.push(`${r.unparseableRows.length} couldn’t be read`);
-          Alert.alert("Import complete", bits.join(" · ") + ".");
+          // The matches the user confirmed on the review step, for the recap.
+          const recap = (preview?.unmatched ?? []).flatMap((u) => {
+            const target = catMappings[u.source];
+            return target ? [{ source: u.source, target, rows: u.rows }] : [];
+          });
           reset();
+          setResult({
+            imported: r.imported,
+            duplicates: r.duplicates,
+            unreadable: r.unparseableRows?.length ?? 0,
+            recap,
+          });
         },
         onError: (e) => Alert.alert("Import failed", String(e)),
       }
     );
+  }
+
+  function runImport() {
+    if (!csv || !mapping.date || !mapping.description || !mapping.amount) return;
+    // No category column mapped → nothing to check; commit straight through.
+    if (!mapping.category) {
+      commitImport();
+      return;
+    }
+    previewCsv.mutate(
+      {
+        csv,
+        mapping: mapping as CsvMapping,
+        negateAmounts: needsSignAnswer ? signChoice === "spending" : negate,
+      },
+      {
+        onSuccess: (p) => {
+          // Every category in the file resolves — no warning to show, commit
+          // without an extra tap.
+          if (p.unmatched.length === 0) {
+            commitImport();
+            return;
+          }
+          setPreview(p);
+          // Suggestions pre-fill the mapping; the user confirms by importing.
+          setCatMappings(
+            Object.fromEntries(p.unmatched.map((u) => [u.source, u.suggestion ?? null]))
+          );
+        },
+        onError: (e) => Alert.alert("Couldn’t check the file", String(e)),
+      }
+    );
+  }
+
+  function commitWithMappings() {
+    const confirmed: Record<string, string> = {};
+    for (const [source, target] of Object.entries(catMappings)) {
+      if (target !== null) confirmed[source] = target;
+    }
+    commitImport(confirmed);
   }
 
   function reset() {
@@ -116,6 +184,9 @@ export default function ImportScreen() {
     setHeaders([]);
     setMapping({});
     setActiveField(null);
+    setPreview(null);
+    setCatMappings({});
+    setActiveUnmatched(null);
   }
 
   const signs = useMemo(
@@ -149,12 +220,213 @@ export default function ImportScreen() {
             needed. Re-importing is safe — rows already imported are skipped.
           </Text>
 
-          {!csv ? (
+          {result ? (
+            /* Success state — in-app, not a bare native alert. */
+            <View style={{ marginTop: 16, alignItems: "center" }}>
+              <View
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 28,
+                  backgroundColor: "rgba(34,197,94,0.12)",
+                  borderWidth: 1,
+                  borderColor: "rgba(34,197,94,0.35)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text style={{ color: COLORS.success, fontSize: 26, fontWeight: "700" }}>✓</Text>
+              </View>
+              <Text style={{ color: COLORS.textPrimary, fontWeight: "700", fontSize: 17, marginTop: 12 }}>
+                {result.imported === 0
+                  ? "Nothing new to import"
+                  : `${result.imported} transaction${result.imported === 1 ? "" : "s"} imported`}
+              </Text>
+              {(result.duplicates > 0 || result.unreadable > 0) && (
+                <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+                  {[
+                    result.duplicates > 0 ? `${result.duplicates} already imported` : null,
+                    result.unreadable > 0 ? `${result.unreadable} couldn’t be read` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </Text>
+              )}
+
+              {result.recap.length > 0 && (
+                <View style={{ alignSelf: "stretch", marginTop: 14 }}>
+                  <Text
+                    style={{
+                      color: COLORS.textMuted,
+                      fontSize: 11,
+                      fontWeight: "600",
+                      letterSpacing: 1,
+                      marginBottom: 6,
+                    }}
+                  >
+                    MATCHED FOR YOU
+                  </Text>
+                  {result.recap.map((m) => (
+                    <View
+                      key={m.source}
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        paddingVertical: 6,
+                        borderBottomWidth: 1,
+                        borderBottomColor: COLORS.glassBorder,
+                      }}
+                    >
+                      <Text style={{ color: COLORS.textPrimary, fontSize: 13 }} numberOfLines={1}>
+                        <Text style={{ color: COLORS.textMuted }}>{m.source}</Text>
+                        {"  →  "}
+                        {m.target}
+                      </Text>
+                      <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
+                        {m.rows} row{m.rows === 1 ? "" : "s"}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              <Pressable
+                onPress={() => router.push("/transactions")}
+                style={{
+                  alignSelf: "stretch",
+                  marginTop: 16,
+                  paddingVertical: 11,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: COLORS.brandPurple,
+                  backgroundColor: "rgba(124,58,237,0.12)",
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: COLORS.brandPurple, fontWeight: "600", fontSize: 14 }}>
+                  View transactions
+                </Text>
+              </Pressable>
+              <Pressable onPress={() => setResult(null)} style={{ marginTop: 12, paddingVertical: 4 }}>
+                <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>Import another file</Text>
+              </Pressable>
+            </View>
+          ) : !csv ? (
             <Pressable onPress={pickFile} style={{ marginTop: 12 }}>
               <Text style={{ color: COLORS.brandPurple, fontWeight: "600", fontSize: 14 }}>
                 Choose a file
               </Text>
             </Pressable>
+          ) : preview ? (
+            /* Item 7 review step: the file has categories matching none of the
+               user's — pause before committing, offer mappings. */
+            <View style={{ marginTop: 12 }}>
+              <Text style={{ color: COLORS.warning, fontSize: 13, fontWeight: "600" }}>
+                {preview.unmatched.length} of {preview.matched.length + preview.unmatched.length}{" "}
+                categories in this file don’t match any of your categories
+              </Text>
+              {(() => {
+                const uncovered = preview.unmatched
+                  .filter((u) => catMappings[u.source] == null)
+                  .reduce((sum, u) => sum + u.rows, 0);
+                return (
+                  <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 4, lineHeight: 17 }}>
+                    {uncovered > 0
+                      ? `${uncovered} row${uncovered === 1 ? "" : "s"} won’t count toward any budget. Match them below, or keep the file’s wording.`
+                      : "All matched — every row will count toward a budget."}
+                  </Text>
+                );
+              })()}
+
+              <View style={{ marginTop: 10 }}>
+                {preview.unmatched.map((u) => {
+                  const chosen = catMappings[u.source] ?? null;
+                  const open = activeUnmatched === u.source;
+                  return (
+                    <View key={u.source} style={{ marginBottom: 8 }}>
+                      <Pressable
+                        onPress={() => setActiveUnmatched(open ? null : u.source)}
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          paddingVertical: 8,
+                          paddingHorizontal: 10,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: chosen ? COLORS.glassBorder : COLORS.warning,
+                        }}
+                      >
+                        <Text style={{ color: COLORS.textPrimary, fontSize: 13, flex: 1 }} numberOfLines={1}>
+                          {u.source}{" "}
+                          <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
+                            · {u.rows} row{u.rows === 1 ? "" : "s"}
+                          </Text>
+                        </Text>
+                        <Text style={{ color: chosen ? COLORS.brandPurple : COLORS.textMuted, fontSize: 12 }}>
+                          {chosen ? `→ ${chosen}` : "keep as-is"}
+                        </Text>
+                      </Pressable>
+
+                      {open && (
+                        <View style={{ marginTop: 6, marginLeft: 8 }}>
+                          <Pressable
+                            onPress={() => {
+                              setCatMappings((m) => ({ ...m, [u.source]: null }));
+                              setActiveUnmatched(null);
+                            }}
+                            style={{ paddingVertical: 6 }}
+                          >
+                            <Text style={{ color: chosen === null ? COLORS.brandPurple : COLORS.textMuted, fontSize: 12 }}>
+                              Keep “{u.source}” as-is
+                            </Text>
+                          </Pressable>
+                          {preview.envelopeNames.map((name) => (
+                            <Pressable
+                              key={name}
+                              onPress={() => {
+                                setCatMappings((m) => ({ ...m, [u.source]: name }));
+                                setActiveUnmatched(null);
+                              }}
+                              style={{ paddingVertical: 6 }}
+                            >
+                              <Text
+                                style={{
+                                  color: chosen === name ? COLORS.brandPurple : COLORS.textPrimary,
+                                  fontSize: 13,
+                                }}
+                              >
+                                {name}
+                              </Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+
+              <Pressable onPress={commitWithMappings} disabled={importCsv.isPending} style={{ marginTop: 8 }}>
+                {importCsv.isPending ? (
+                  <ActivityIndicator color={COLORS.brandPurple} />
+                ) : (
+                  <Text style={{ color: COLORS.brandPurple, fontWeight: "600", fontSize: 14 }}>
+                    Import transactions
+                  </Text>
+                )}
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setPreview(null);
+                  setActiveUnmatched(null);
+                }}
+                style={{ marginTop: 10 }}
+              >
+                <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>‹ Back to column matching</Text>
+              </Pressable>
+            </View>
           ) : (
             <View style={{ marginTop: 12 }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
@@ -283,10 +555,10 @@ export default function ImportScreen() {
 
               <Pressable
                 onPress={runImport}
-                disabled={!ready || importCsv.isPending}
+                disabled={!ready || importCsv.isPending || previewCsv.isPending}
                 style={{ marginTop: 8 }}
               >
-                {importCsv.isPending ? (
+                {importCsv.isPending || previewCsv.isPending ? (
                   <ActivityIndicator color={COLORS.brandPurple} />
                 ) : (
                   <Text

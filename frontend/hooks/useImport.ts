@@ -20,6 +20,30 @@ export interface ImportResult {
   unparseableRows?: unknown[];
 }
 
+/** One of the file's categories that resolves to an existing category. */
+export interface MatchedCategory {
+  source: string;
+  envelope: string;
+  rows: number;
+}
+
+/** One that doesn't — its rows would count toward no budget. */
+export interface UnmatchedCategory {
+  source: string;
+  rows: number;
+  suggestion?: string;
+}
+
+/** Response of /api/import/csv/preview — the item-7 pre-commit check. */
+export interface ImportPreview {
+  ok: boolean;
+  rows: number;
+  unparseableRows: number;
+  matched: MatchedCategory[];
+  unmatched: UnmatchedCategory[];
+  envelopeNames: string[];
+}
+
 /** Imported rows land in transactions, so budget/bank views must refetch. */
 function useImportMutation<TArgs>(fn: (args: TArgs) => Promise<ImportResult>) {
   const qc = useQueryClient();
@@ -62,9 +86,26 @@ export { amountSignProfile, type AmountSignProfile } from "@/lib/csv-signs";
 
 /** POSTs the file contents as JSON — the route takes {csv, mapping}, not multipart. */
 export function useImportCsv() {
-  return useImportMutation((body: { csv: string; mapping: CsvMapping; negateAmounts?: boolean }) =>
-    api.post<ImportResult>("/api/import/csv", body)
+  return useImportMutation(
+    (body: {
+      csv: string;
+      mapping: CsvMapping;
+      negateAmounts?: boolean;
+      categoryMappings?: Record<string, string>;
+    }) => api.post<ImportResult>("/api/import/csv", body)
   );
+}
+
+/**
+ * Dry-run before the commit: which of the file's categories match no existing
+ * category (with row counts + suggestions). No writes, so a plain mutation
+ * with no cache invalidation.
+ */
+export function useImportPreviewCsv() {
+  return useMutation({
+    mutationFn: (body: { csv: string; mapping: CsvMapping; negateAmounts?: boolean }) =>
+      api.post<ImportPreview>("/api/import/csv/preview", body),
+  });
 }
 
 /**
