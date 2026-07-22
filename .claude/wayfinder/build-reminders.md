@@ -132,7 +132,13 @@ the target is itself an average.
 
 ---
 
-### 7. Import: warn about categories that match no envelope
+### 7. Import: warn about categories that match no envelope — DONE 2026-07-22 (`ede6922` backend, `0d4c854` frontend, device-confirmed)
+Shipped as designed: `POST /api/import/csv/preview` (matched/unmatched with row counts +
+near-miss suggestions via `lib/import/category-match.ts`), review step in the import UI,
+user-confirmed `categoryMappings` on commit (validated pre-write; mapped rows get
+`category_source=manual`). Bonus fix on ALL import paths: source categories now resolve to
+the envelope's own spelling instead of storing case-variants verbatim. Plus an in-app
+success state replacing the bare native alert.
 **Phase:** Import. Raised 2026-07-21 alongside the sign-inversion guard (shipped, `1cd29f9`).
 **Context:** A CSV carrying its own category column can import cleanly while most rows land
 in categories that match no envelope — observed at **6 of 10 categories unmatched**, so those
