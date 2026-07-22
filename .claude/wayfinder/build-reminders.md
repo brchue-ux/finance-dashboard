@@ -164,7 +164,17 @@ failing as empty screens and 500s rather than a login prompt.
 
 ---
 
-### 9. Confirm SnapTrade's ticker format for TSX holdings
+### 9. Confirm SnapTrade's ticker format for TSX holdings — ✅ RESOLVED 2026-07-22, live connect
+**Verified on the first real Wealthsimple connection (24 accounts): SnapTrade returns
+Yahoo-suffixed symbols — `UniversalSymbol.symbol` = `VEQT.TO`, `raw_symbol` = `VEQT`. The
+sync already stored the suffixed field, and the stored ticker priced through
+`/api/market/ohlcv` (54 bars, close $61.11). No mapping needed.** The connect surfaced two
+REAL bugs instead (fixed in `27a811f`): `getUserHoldings` is retired on this API tier (410)
+→ granular `getUserAccountPositions`; and positions-only valuation missed managed-account
+value entirely — Wealthsimple MANAGED accounts (both RESPs) itemize no positions, so
+totalValue now uses each account's own `balance.total` with cashValue split out (user
+decision: portfolio = everything at WS, invested-vs-cash distinguishable).
+
 **Phase:** Portfolio / market data. Found 2026-07-21.
 **Context:** Yahoo needs an exchange suffix for Canadian listings — `VFV` fails schema
 validation, `VFV.TO` returns 53 bars. Unpriceable tickers no longer 500 the Holding Detail
