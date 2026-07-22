@@ -7,8 +7,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
-import { bankAccounts, transactions } from "@/db/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { bankAccounts, transactions, transactionSplits } from "@/db/schema";
+import { and, desc, eq, inArray } from "drizzle-orm";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -40,10 +40,30 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     .offset(offset);
 
   const hasMore = rows.length > limit;
+  const page = rows.slice(0, limit);
+
+  // A split transaction keeps its own `category`, but its money is actually
+  // divided across its splits — so the row would look unchanged after a split,
+  // which read as "did that even work?". Attach the split categories so the feed
+  // can show what it was divided into. One query for the whole page, not per row.
+  const ids = page.map((r) => r.id);
+  const splitRows = ids.length
+    ? await db
+        .select({ transactionId: transactionSplits.transactionId, category: transactionSplits.category })
+        .from(transactionSplits)
+        .where(and(eq(transactionSplits.userId, authed.userId), inArray(transactionSplits.transactionId, ids)))
+    : [];
+  const splitsByTxn = new Map<string, string[]>();
+  for (const s of splitRows) {
+    const arr = splitsByTxn.get(s.transactionId) ?? [];
+    arr.push(s.category);
+    splitsByTxn.set(s.transactionId, arr);
+  }
+
   return NextResponse.json({
     accountId,
     accountName: account.name,
-    transactions: rows.slice(0, limit),
+    transactions: page.map((r) => ({ ...r, splitCategories: splitsByTxn.get(r.id) ?? null })),
     limit,
     offset,
     hasMore,

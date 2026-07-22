@@ -110,7 +110,14 @@ export function TransactionFeed({
                   {txn.merchantName ?? txn.description}
                 </Text>
                 <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
-                  {txn.category ?? "Uncategorized"}
+                  {txn.splitCategories && txn.splitCategories.length > 0 ? (
+                    <>
+                      <Text style={{ color: COLORS.brandPurple, fontWeight: "600" }}>Split</Text>
+                      {" · " + txn.splitCategories.join(", ")}
+                    </>
+                  ) : (
+                    (txn.category ?? "Uncategorized")
+                  )}
                   {txn.pending ? " · Pending" : ""}
                 </Text>
               </View>

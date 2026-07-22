@@ -81,11 +81,21 @@ export async function GET(req: NextRequest) {
   const totals = summarizeTotals(summaries, monthTxns, splits);
   const notableByCategory = computeNotableTransactions(summaries, monthTxns, splits);
 
+  // `splits` is already loaded for the budget math; reuse it to tell the feed
+  // which rows are split (and into what), so a split reads as visibly done here
+  // too, not only on the account screen where it was made.
+  const splitsByTxn = new Map<string, string[]>();
+  for (const s of splits) {
+    const arr = splitsByTxn.get(s.transactionId) ?? [];
+    arr.push(s.category);
+    splitsByTxn.set(s.transactionId, arr);
+  }
+
   return NextResponse.json({
     year,
     month,
     envelopes: summaries,
-    transactions: monthTxns,
+    transactions: monthTxns.map((t) => ({ ...t, splitCategories: splitsByTxn.get(t.id) ?? null })),
     notableTransactions: notableByCategory,
     summary: totals,
     bankConnections: connections,

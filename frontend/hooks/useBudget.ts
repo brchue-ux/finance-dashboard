@@ -68,6 +68,9 @@ export interface Transaction {
   amount: number;
   category: string | null;
   pending: number;
+  /** Present when the transaction is split — the categories its amount is
+   *  divided across. Null/absent when it is a single ordinary transaction. */
+  splitCategories?: string[] | null;
 }
 
 export function useBudget(year: number, month: number) {
