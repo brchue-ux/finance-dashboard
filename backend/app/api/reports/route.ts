@@ -14,6 +14,7 @@ import { and, eq } from "drizzle-orm";
 import { attributeSpend } from "@/lib/budget/summarize";
 import { budgetRows } from "@/lib/budget/transfers";
 import { classifyRefunds, effectiveMonth } from "@/lib/budget/refunds";
+import { excludeWealthsimpleMirrors } from "@/lib/reports/net-worth-sources";
 
 export async function GET(req: NextRequest) {
   const authed = await requireUser(req);
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
 
   const [accounts, balanceSnaps, portfolioSnaps, txns, splits, envelopes] = await Promise.all([
     db
-      .select({ id: bankAccounts.id, type: bankAccounts.type })
+      .select({ id: bankAccounts.id, name: bankAccounts.name, type: bankAccounts.type })
       .from(bankAccounts)
       .where(eq(bankAccounts.userId, userId)),
     db
@@ -68,16 +69,23 @@ export async function GET(req: NextRequest) {
   // ── Net worth: daily buckets with carry-forward of each account's last-known
   // balance. Credit balances are amounts owed → liabilities. History starts the
   // day capture started (cannot be backfilled — spec §9).
+  // Portfolio snapshots are authoritative for Wealthsimple (cash included) —
+  // bank-side WS mirror accounts must not also contribute balances, or WS
+  // cash counts twice. See lib/reports/net-worth-sources.ts.
+  const bankSideAccounts = excludeWealthsimpleMirrors(accounts, portfolioSnaps.length > 0);
+  const bankSideIds = new Set(bankSideAccounts.map((a) => a.id));
+  const bankSnaps = balanceSnaps.filter((s) => bankSideIds.has(s.accountId));
+
   const creditAccounts = new Set(accounts.filter((a) => a.type === "credit").map((a) => a.id));
   const day = (unix: number) => new Date(unix * 1000).toISOString().split("T")[0];
 
   const allDays = new Set<string>();
-  for (const s of balanceSnaps) allDays.add(day(s.capturedAt));
+  for (const s of bankSnaps) allDays.add(day(s.capturedAt));
   for (const s of portfolioSnaps) allDays.add(day(s.snapshotAt));
   const sortedDays = [...allDays].sort();
 
   const snapsByAccount = new Map<string, { day: string; balance: number }[]>();
-  for (const s of balanceSnaps) {
+  for (const s of bankSnaps) {
     const list = snapsByAccount.get(s.accountId) ?? [];
     list.push({ day: day(s.capturedAt), balance: s.balanceCurrent ?? 0 });
     snapsByAccount.set(s.accountId, list);
