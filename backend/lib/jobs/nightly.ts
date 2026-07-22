@@ -193,7 +193,7 @@ export async function pollPendingBatches(): Promise<void> {
             view === "budget"
               ? await assembleBudgetContext(run.userId!)
               : await assemblePortfolioContext(run.userId!);
-          const { cards, dropped } = validateCards(parseCards(text) as CardLike[], context);
+          const { cards, dropped } = validateCards(parseCards(text) as CardLike[], context, { requireGrounding: view === "budget" });
           if (dropped.length > 0) {
             console.warn(
               `[nightly][validate-cards] dropped ${dropped.length} ${view} card(s):`,
