@@ -33,6 +33,17 @@ const FIELDS: { key: Field; label: string; required: boolean }[] = [
   { key: "category", label: "Category", required: false },
 ];
 
+/**
+ * The server's per-row error strings are debug-shaped (`row 9 ("X"): unparseable
+ * date "…" or amount "…"`) — accurate, but they read as code on a success
+ * screen. Reduce to the two facts a person acts on: which row, which merchant.
+ */
+function friendlyRowError(raw: string): string {
+  const m = raw.match(/^row (\d+)(?: \("(.+)"\))?:/);
+  if (!m) return raw;
+  return `Row ${m[1]}${m[2] ? ` — ${m[2]}` : ""} couldn’t be read (check its date and amount)`;
+}
+
 /** Prefill a field when a header IS that field's name (case-insensitive). */
 function autoMap(headers: string[]): Partial<CsvMapping> {
   const out: Partial<CsvMapping> = {};
@@ -88,7 +99,7 @@ export default function ImportExcelScreen() {
       <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }}>
         <Pressable onPress={() => router.back()} hitSlop={12} style={{ flexDirection: "row", alignItems: "center" }}>
           <Text style={{ color: COLORS.brandPurple, fontSize: 24, marginRight: 4 }}>‹</Text>
-          <Text style={{ color: COLORS.textPrimary, fontSize: 18, fontWeight: "800" }}>Excel / OneDrive</Text>
+          <Text style={{ color: COLORS.textPrimary, fontSize: 18, fontWeight: "800" }}>Microsoft Excel</Text>
         </Pressable>
       </View>
 
@@ -101,15 +112,19 @@ export default function ImportExcelScreen() {
             </Text>
             <Text style={{ color: COLORS.textMuted, fontSize: 14, marginTop: 8, textAlign: "center" }}>
               {result.imported} imported · {result.duplicates} already present
-              {result.unparseableRows?.length
-                ? `\n${result.unparseableRows.length} row${result.unparseableRows.length === 1 ? "" : "s"} couldn't be read`
-                : ""}
             </Text>
-            {(result.unparseableRows as string[] | undefined)?.slice(0, 5).map((e, i) => (
-              <Text key={i} style={{ color: COLORS.warning, fontSize: 12, marginTop: 4 }} numberOfLines={2}>
-                {String(e)}
-              </Text>
-            ))}
+            {result.unparseableRows?.length ? (
+              <View style={{ marginTop: 12, alignSelf: "stretch", backgroundColor: COLORS.glassBg, borderWidth: 1, borderColor: COLORS.glassBorder, borderRadius: 10, padding: 12 }}>
+                <Text style={{ color: COLORS.warning, fontSize: 12, fontWeight: "700", marginBottom: 6 }}>
+                  {result.unparseableRows.length} ROW{result.unparseableRows.length === 1 ? "" : "S"} SKIPPED
+                </Text>
+                {(result.unparseableRows as string[]).slice(0, 5).map((e, i) => (
+                  <Text key={i} style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }} numberOfLines={2}>
+                    {friendlyRowError(String(e))}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
             <Pressable
               onPress={() => router.push("/transactions" as never)}
               style={{ backgroundColor: COLORS.brandPurple, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 12, marginTop: 20 }}

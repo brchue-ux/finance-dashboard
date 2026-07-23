@@ -599,11 +599,11 @@ export default function ImportScreen() {
 
         <GlassCard>
           <Text style={{ color: COLORS.textPrimary, fontWeight: "600", fontSize: 15 }}>
-            Excel / OneDrive
+            Microsoft Excel
           </Text>
           <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 6, lineHeight: 18 }}>
-            Sync a workbook that keeps living in your OneDrive — pick the file
-            and tab in-app, no re-export each time.
+            Sync a workbook straight from OneDrive — pick the file and tab
+            in-app, no re-export each time.
           </Text>
           <Pressable onPress={() => router.push("/import-excel" as never)} style={{ marginTop: 12 }}>
             <Text style={{ color: COLORS.brandPurple, fontWeight: "600", fontSize: 14 }}>
