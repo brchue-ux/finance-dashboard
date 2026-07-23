@@ -39,6 +39,31 @@ export interface ColumnMapping {
  * `headerError` is set for a whole-file problem (no header, missing mapped
  * column); `errors` collects individual unparseable rows (the rest still import).
  */
+// Excel date-typed cells reach the grid as serial-number strings via the Graph
+// values API ("46203" or "46203.8333..." with a time fraction), not display
+// text. new Date("46203") would invent year-46203 dates, so convert serials in
+// the plausible transaction range (~1954–2119) explicitly. 25569 = the serial
+// of 1970-01-01; the time fraction is dropped (transactions are day-grained).
+const EXCEL_EPOCH_OFFSET_DAYS = 25569;
+function parseGridDate(raw: string): Date {
+  if (/^\d{5}(\.\d+)?$/.test(raw)) {
+    const serial = parseFloat(raw);
+    if (serial >= 20000 && serial < 80000) {
+      return new Date((Math.floor(serial) - EXCEL_EPOCH_OFFSET_DAYS) * 86400000);
+    }
+  }
+  return new Date(raw);
+}
+
+// Accounting-style exports write negatives as "(45.67)"; banks also emit
+// "$1,234.56". Strip currency furniture, honor the parentheses.
+function parseGridAmount(raw: string): number {
+  const parens = raw.match(/^\((.+)\)$/);
+  const inner = (parens ? parens[1] : raw).replace(/[$,]/g, "");
+  const value = parseFloat(inner);
+  return parens ? -value : value;
+}
+
 export function normalizeMappedRows(
   rows: string[][],
   mapping: ColumnMapping,
@@ -62,15 +87,24 @@ export function normalizeMappedRows(
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
     const rawDate = (r[dateIdx] ?? "").trim();
-    const date = new Date(rawDate);
-    const amount = parseFloat((r[amountIdx] ?? "").replace(/[$,]/g, ""));
+    const rawDesc = (r[descIdx] ?? "").trim();
+    const rawAmount = (r[amountIdx] ?? "").trim();
+    // Spacer rows are sheet structure, not data errors — skip silently. A row
+    // with ANY of the three essentials filled still falls through to error
+    // reporting (e.g. a "Total" row has description+amount but no date).
+    if (!rawDate && !rawDesc && !rawAmount) continue;
+    const date = parseGridDate(rawDate);
+    const amount = parseGridAmount(rawAmount);
     if (Number.isNaN(date.getTime()) || Number.isNaN(amount)) {
-      errors.push(`row ${i + 1}: unparseable date "${rawDate}" or amount "${r[amountIdx]}"`);
+      // Include the description so the user can find the row in their sheet.
+      errors.push(
+        `row ${i + 1}${rawDesc ? ` ("${rawDesc}")` : ""}: unparseable date "${rawDate}" or amount "${r[amountIdx]}"`
+      );
       continue;
     }
     normalized.push({
       date: date.toISOString().split("T")[0],
-      description: (r[descIdx] ?? "").trim(),
+      description: rawDesc,
       amount: negateAmounts ? -amount : amount,
       ...(categoryIdx !== -1 && r[categoryIdx]?.trim() ? { category: r[categoryIdx].trim() } : {}),
     });
