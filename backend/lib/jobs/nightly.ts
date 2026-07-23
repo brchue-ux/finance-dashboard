@@ -13,7 +13,7 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/db";
-import { user, jobRuns, llmAnalysisCache } from "@/db/schema";
+import { user, jobRuns, llmAnalysisCache, spreadsheetConnections } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { SYSTEM_PROMPT, AUTO_CARD_INSTRUCTION } from "@/lib/llm/prompts";
@@ -23,6 +23,8 @@ import { parseCards } from "@/lib/llm/parse-cards";
 import { validateCards, type CardLike } from "@/lib/llm/validate-cards";
 import { syncPlaidForUser } from "@/lib/sync/plaid";
 import { syncSnapTradeForUser } from "@/lib/sync/snaptrade";
+import { syncExcel, savedExcelConfig } from "@/lib/import/spreadsheet-sync";
+import { withJobRun } from "@/lib/jobs/job-runs";
 import { startJobRun, finishJobRun } from "@/lib/jobs/job-runs";
 
 const MODEL = "claude-sonnet-4-6"; // keep in step with lib/llm/advisory.ts
@@ -79,9 +81,56 @@ export async function runNightly(): Promise<void> {
       console.error(`[nightly] snaptrade sync failed for user ${u.id}:`, err);
     }
     try {
+      // Spreadsheet re-syncs run BEFORE the card batch so tonight's cards see
+      // tonight's rows. Opt-in per connection; dedup makes replays idempotent.
+      await autoResyncSpreadsheets(u.id);
+    } catch (err) {
+      console.error(`[nightly] spreadsheet resync failed for user ${u.id}:`, err);
+    }
+    try {
       await submitCardBatch(u.id);
     } catch (err) {
       console.error(`[nightly] batch submit failed for user ${u.id}:`, err);
+    }
+  }
+}
+
+/** Re-run every opted-in spreadsheet connection from its saved config. */
+export async function autoResyncSpreadsheets(userId: string): Promise<void> {
+  const conns = await db
+    .select()
+    .from(spreadsheetConnections)
+    .where(and(eq(spreadsheetConnections.userId, userId), eq(spreadsheetConnections.autoSync, 1)));
+
+  for (const conn of conns) {
+    if (conn.provider !== "excel") continue; // google gets this when its flow is live
+    const config = savedExcelConfig(conn);
+    if (!config) continue; // opted in but never synced — nothing to replay
+    try {
+      const res = await withJobRun(
+        "import_excel",
+        async () => {
+          const r = await syncExcel(userId, config);
+          return {
+            result: r,
+            metadata: {
+              trigger: "nightly_auto",
+              imported: r.imported,
+              duplicates: r.duplicates,
+              unparseableRows: r.unparseableRows.length,
+            },
+          };
+        },
+        userId
+      );
+      // withJobRun's T | undefined — result is always set on our success path.
+      if (res) {
+        console.log(
+          `[nightly] excel resync for user ${userId}: +${res.imported} (${res.duplicates} dup)`
+        );
+      }
+    } catch (err) {
+      console.error(`[nightly] excel resync failed for user ${userId}:`, err);
     }
   }
 }

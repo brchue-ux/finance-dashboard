@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth-guard";
 import { excelAccessTokenForUser, excelConfigured, listExcelFiles } from "@/lib/import/excel";
+import { savedExcelConfig } from "@/lib/import/spreadsheet-sync";
 
 export async function GET(req: NextRequest) {
   const authed = await requireUser(req);
@@ -22,7 +23,17 @@ export async function GET(req: NextRequest) {
 
   try {
     const files = await listExcelFiles(authorized.accessToken);
-    return NextResponse.json({ configured: true, connected: true, files });
+    // Saved-sync state rides along so the import card can offer "Sync now" and
+    // the nightly toggle without a second call.
+    const saved = savedExcelConfig(authorized.connection);
+    return NextResponse.json({
+      configured: true,
+      connected: true,
+      files,
+      saved: saved ? { file: saved.file, worksheet: saved.worksheet } : null,
+      lastSyncedAt: authorized.connection.lastSyncedAt,
+      autoSync: authorized.connection.autoSync === 1,
+    });
   } catch (err) {
     return NextResponse.json(
       { error: `Could not list OneDrive files: ${err instanceof Error ? err.message : String(err)}` },

@@ -11,6 +11,7 @@ import { COLORS } from "@/constants/theme";
 import { ConversationSheet } from "@/components/llm/ConversationSheet";
 import { ChartView, type ChartBar } from "@/components/portfolio/ChartView";
 import { usePortfolio, useOHLCV, type Holding } from "@/hooks/usePortfolio";
+import { formatMoney } from "@/lib/money";
 
 const TAX_BADGE: Record<Holding["accountType"], { label: string; color: string }> = {
   tfsa: { label: "TFSA — No capital gains on sale", color: COLORS.success },
@@ -19,9 +20,7 @@ const TAX_BADGE: Record<Holding["accountType"], { label: string; color: string }
   crypto: { label: "Crypto", color: "#8B5CF6" },
 };
 
-function money(n: number, digits = 2): string {
-  return `${n < 0 ? "-" : ""}$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
-}
+const money = (n: number, digits = 2) => formatMoney(n, { digits });
 
 export default function HoldingDetailScreen() {
   const { ticker, alertCondition, alertPrice } = useLocalSearchParams<{

@@ -73,6 +73,12 @@ export async function GET(req: NextRequest) {
     nightlyAnalysis: {
       lastRunAt: lastNightly?.startedAt ?? null,
       lastRunStatus: lastNightly?.status ?? null,
+      // Per-view outcomes the poller persisted ("3 cards (1 dropped by
+      // validation)", API errors…) — the self-serve nightly review, so
+      // checking last night's run doesn't require server logs.
+      items: lastNightly?.metadata
+        ? ((JSON.parse(lastNightly.metadata) as { items?: unknown[] }).items ?? null)
+        : null,
     },
     importHistory: imports.map((j) => ({
       id: j.id,

@@ -138,6 +138,13 @@ export default function SystemStatusScreen() {
                 detail={`Last run ${data.nightlyAnalysis.lastRunStatus ?? "never run"}`}
                 color={statusColor(data.nightlyAnalysis.lastRunStatus)}
               />
+              {/* The self-serve nightly review: what each view produced, and
+                  whether the validator dropped anything, without server logs. */}
+              {data.nightlyAnalysis.items?.map((item, i) => (
+                <Text key={i} style={{ color: item.outcome === "ok" ? COLORS.textMuted : COLORS.warning, fontSize: 12, marginTop: 4 }}>
+                  {item.view}: {item.outcome === "ok" ? (item.detail ?? "ok") : `${item.outcome}${item.detail ? ` — ${item.detail}` : ""}`}
+                </Text>
+              ))}
             </GlassCard>
 
             <SectionLabel>IMPORT HISTORY</SectionLabel>

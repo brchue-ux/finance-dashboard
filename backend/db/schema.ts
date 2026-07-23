@@ -684,6 +684,9 @@ export const spreadsheetConnections = sqliteTable(
     mapping: text("mapping"), // JSON: { date, description, amount, category? } column headers
     negateAmounts: integer("negate_amounts"), // boolean; source uses positive = debit
     status: text("status").notNull().default("active"), // "active" | "reauth_required"
+    // Opt-in nightly re-sync (propose-don't-impose: nothing auto-imports until
+    // the user flips this). Only meaningful once a config is persisted.
+    autoSync: integer("auto_sync").notNull().default(0),
     lastSyncedAt: integer("last_synced_at"),
     createdAt: integer("created_at").notNull(),
   },

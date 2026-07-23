@@ -18,12 +18,23 @@ import { useRouter } from "expo-router";
 import { COLORS } from "@/constants/theme";
 import {
   useConnectExcel,
+  useExcelAutoSync,
   useExcelFiles,
   useExcelWorkbook,
   useSyncSpreadsheet,
   type CsvMapping,
   type ImportResult,
+  type MatchedCategory,
+  type UnmatchedCategory,
 } from "@/hooks/useImport";
+
+/** The item-7 pause: the sheet's category column had names that match no
+ *  envelope; the user maps or keeps each before anything is written. */
+interface CategoryReview {
+  matched: MatchedCategory[];
+  unmatched: UnmatchedCategory[];
+  envelopeNames: string[];
+}
 
 type Field = keyof CsvMapping;
 const FIELDS: { key: Field; label: string; required: boolean }[] = [
@@ -67,6 +78,10 @@ export default function ImportExcelScreen() {
   const [activeField, setActiveField] = useState<Field | null>(null);
   const [negate, setNegate] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [review, setReview] = useState<CategoryReview | null>(null);
+  const [catMap, setCatMap] = useState<Record<string, string | null>>({});
+  const [activeSource, setActiveSource] = useState<string | null>(null);
+  const autoSync = useExcelAutoSync();
 
   const headers = workbook.data?.headers ?? [];
   const worksheets = workbook.data?.worksheets ?? [];
@@ -81,17 +96,64 @@ export default function ImportExcelScreen() {
     if (headers.length > 0 && Object.keys(mapping).length === 0) setMapping(autoMap(headers));
   }, [headers]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Which config the current sync/review round uses: the pickers' explicit one,
+  // or `{useSaved:true}` replaying the persisted config ("Sync now"). Stored in
+  // state ONLY so the review step's later commit remembers the round's mode —
+  // within a round the mode is passed explicitly, never read back same-tick.
+  const [savedMode, setSavedMode] = useState(false);
+  const configFor = (saved: boolean) =>
+    saved
+      ? ({ useSaved: true } as const)
+      : {
+          file: file!,
+          worksheet: worksheet!,
+          mapping: mapping as CsvMapping,
+          ...(negate ? { negateAmounts: true } : {}),
+        };
+
+  function commit(saved: boolean, categoryMappings?: Record<string, string>) {
+    sync.mutate(
+      { ...configFor(saved), ...(categoryMappings ? { categoryMappings } : {}) },
+      {
+        onSuccess: (r) => {
+          setResult(r);
+          setReview(null);
+        },
+      }
+    );
+  }
+
+  // The item-7 pause, on BOTH paths (explicit and saved — a living sheet can
+  // grow new category names between syncs): preview first; unmatched names
+  // stop on a review step instead of silently landing outside every envelope.
+  function previewThenCommit(saved: boolean) {
+    setSavedMode(saved);
+    sync.mutate(
+      { ...configFor(saved), previewOnly: true },
+      {
+        onSuccess: (r) => {
+          if (r.unmatched && r.unmatched.length > 0) {
+            setReview({ matched: r.matched ?? [], unmatched: r.unmatched, envelopeNames: r.envelopeNames ?? [] });
+            // Suggestions pre-fill; the user confirms by importing.
+            setCatMap(Object.fromEntries(r.unmatched.map((u) => [u.source, u.suggestion ?? null])));
+          } else {
+            commit(saved);
+          }
+        },
+      }
+    );
+  }
+
   function onSync() {
     if (!ready) return;
-    sync.mutate(
-      {
-        file: file!,
-        worksheet: worksheet!,
-        mapping: mapping as CsvMapping,
-        ...(negate ? { negateAmounts: true } : {}),
-      },
-      { onSuccess: setResult }
-    );
+    if (mapping.category) previewThenCommit(false);
+    else commit(false);
+  }
+
+  function onCommitReviewed() {
+    const mappings: Record<string, string> = {};
+    for (const [source, target] of Object.entries(catMap)) if (target) mappings[source] = target;
+    commit(savedMode, Object.keys(mappings).length > 0 ? mappings : undefined);
   }
 
   return (
@@ -135,6 +197,82 @@ export default function ImportExcelScreen() {
               <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>Sync again</Text>
             </Pressable>
           </View>
+        ) : review ? (
+          <View>
+            <Text style={{ color: COLORS.textPrimary, fontSize: 16, fontWeight: "700" }}>
+              Some categories don’t match your envelopes
+            </Text>
+            <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 6, lineHeight: 19 }}>
+              {review.matched.length > 0
+                ? `${review.matched.length} matched on their own. `
+                : ""}
+              Map the rest to an envelope, or keep them as-is (their rows won’t count toward any budget).
+            </Text>
+            {review.unmatched.map((u) => (
+              <View key={u.source} style={{ marginTop: 12 }}>
+                <Pressable
+                  onPress={() => setActiveSource(activeSource === u.source ? null : u.source)}
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    paddingVertical: 10,
+                    paddingHorizontal: 12,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: COLORS.glassBorder,
+                    backgroundColor: COLORS.glassBg,
+                  }}
+                >
+                  <Text style={{ color: COLORS.textPrimary, fontSize: 14, flex: 1 }} numberOfLines={1}>
+                    {u.source} <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>({u.rows} rows)</Text>
+                  </Text>
+                  <Text style={{ color: catMap[u.source] ? COLORS.brandPurple : COLORS.textMuted, fontSize: 13 }}>
+                    {catMap[u.source] ?? "keep as-is"}
+                  </Text>
+                </Pressable>
+                {activeSource === u.source && (
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6, marginLeft: 8 }}>
+                    <Pressable
+                      onPress={() => {
+                        setCatMap((m) => ({ ...m, [u.source]: null }));
+                        setActiveSource(null);
+                      }}
+                      style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: COLORS.glassBorder }}
+                    >
+                      <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>Keep as-is</Text>
+                    </Pressable>
+                    {review.envelopeNames.map((name) => (
+                      <Pressable
+                        key={name}
+                        onPress={() => {
+                          setCatMap((m) => ({ ...m, [u.source]: name }));
+                          setActiveSource(null);
+                        }}
+                        style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: COLORS.glassBorder }}
+                      >
+                        <Text style={{ color: COLORS.textPrimary, fontSize: 12 }}>{name}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ))}
+            <Pressable
+              onPress={onCommitReviewed}
+              disabled={sync.isPending}
+              style={{ backgroundColor: COLORS.brandPurple, borderRadius: 10, paddingVertical: 13, alignItems: "center", marginTop: 18 }}
+            >
+              {sync.isPending ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={{ color: "#fff", fontWeight: "700" }}>Import transactions</Text>
+              )}
+            </Pressable>
+            <Pressable onPress={() => setReview(null)} style={{ marginTop: 12, alignItems: "center" }}>
+              <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>‹ Back</Text>
+            </Pressable>
+          </View>
         ) : files.isLoading ? (
           <ActivityIndicator color={COLORS.brandPurple} style={{ marginTop: 32 }} />
         ) : !files.data?.connected ? (
@@ -155,6 +293,45 @@ export default function ImportExcelScreen() {
           </View>
         ) : (
           <View>
+            {/* Saved sync: replay the last configuration with one tap, and the
+                nightly opt-in. Only shown once a sync has persisted a config. */}
+            {files.data.saved && (
+              <View style={{ backgroundColor: COLORS.glassBg, borderWidth: 1, borderColor: COLORS.glassBorder, borderRadius: 12, padding: 14, marginBottom: 18 }}>
+                <Text style={{ color: COLORS.textMuted, fontSize: 12, fontWeight: "600", letterSpacing: 1 }}>
+                  SAVED SYNC
+                </Text>
+                <Text style={{ color: COLORS.textPrimary, fontSize: 14, marginTop: 6 }} numberOfLines={1}>
+                  {files.data.saved.file} · {files.data.saved.worksheet}
+                </Text>
+                {files.data.lastSyncedAt ? (
+                  <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                    Last synced {new Date(files.data.lastSyncedAt * 1000).toLocaleString()}
+                  </Text>
+                ) : null}
+                <Pressable
+                  onPress={() => previewThenCommit(true)}
+                  disabled={sync.isPending}
+                  style={{ backgroundColor: COLORS.brandPurple, borderRadius: 10, paddingVertical: 11, alignItems: "center", marginTop: 12 }}
+                >
+                  {sync.isPending ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>Sync now</Text>
+                  )}
+                </Pressable>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
+                  <Text style={{ color: COLORS.textMuted, fontSize: 13, flex: 1 }}>
+                    Also sync every night
+                  </Text>
+                  <Switch
+                    value={files.data.autoSync ?? false}
+                    onValueChange={(v) => autoSync.mutate(v)}
+                    disabled={autoSync.isPending}
+                  />
+                </View>
+              </View>
+            )}
+
             {/* Workbook */}
             <Text style={{ color: COLORS.textMuted, fontSize: 12, fontWeight: "600", letterSpacing: 1, marginBottom: 8 }}>
               WORKBOOK

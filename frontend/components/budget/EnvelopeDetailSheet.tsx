@@ -14,10 +14,9 @@ import { View, Text, Pressable } from "react-native";
 import { COLORS } from "@/constants/theme";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import type { BudgetEnvelope } from "@/hooks/useBudget";
+import { formatMoney } from "@/lib/money";
 
-function money(n: number) {
-  return `$${Math.round(Math.abs(n)).toLocaleString()}`;
-}
+const money = (n: number) => formatMoney(n, { abs: true });
 
 interface EnvelopeDetailSheetProps {
   envelope: BudgetEnvelope;

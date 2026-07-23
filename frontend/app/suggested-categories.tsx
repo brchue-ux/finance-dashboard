@@ -15,10 +15,9 @@ import { GradientText } from "@/components/ui/GradientText";
 import { COLORS } from "@/constants/theme";
 import { useEnvelopeProposal, type RecognizedCategory, type UnrecognizedMerchant } from "@/hooks/useEnvelopeProposal";
 import { useCreateEnvelope } from "@/hooks/useEnvelopes";
+import { formatMoney } from "@/lib/money";
 
-function money(n: number) {
-  return `$${Math.round(n).toLocaleString()}`;
-}
+const money = (n: number) => formatMoney(n);
 
 export default function SuggestedCategoriesScreen() {
   const router = useRouter();

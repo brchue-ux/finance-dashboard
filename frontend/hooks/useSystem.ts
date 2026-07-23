@@ -12,7 +12,12 @@ export interface SystemStatus {
     /** False outside Mon–Fri ~4:00–20:00 ET; a gap then is healthy, not stale. */
     marketWindowOpenNow: boolean;
   };
-  nightlyAnalysis: { lastRunAt: number | null; lastRunStatus: string | null };
+  nightlyAnalysis: {
+    lastRunAt: number | null;
+    lastRunStatus: string | null;
+    /** Per-view outcomes from the batch poller ("3 cards (1 dropped by validation)"). */
+    items: { view: string; outcome: string; detail?: string }[] | null;
+  };
   importHistory: JobRun[];
 }
 

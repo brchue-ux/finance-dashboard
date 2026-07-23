@@ -15,11 +15,9 @@ import { MonthNav } from "@/components/budget/MonthNav";
 import { useReports } from "@/hooks/useReports";
 import { useBudget } from "@/hooks/useBudget";
 import { usePortfolio } from "@/hooks/usePortfolio";
+import { formatMoney } from "@/lib/money";
 
-function money(n: number, digits = 0): string {
-  const abs = Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
-  return `${n < 0 ? "-" : ""}$${abs}`;
-}
+const money = (n: number, digits = 0) => formatMoney(n, { digits });
 
 export default function ReportsScreen() {
   const router = useRouter();

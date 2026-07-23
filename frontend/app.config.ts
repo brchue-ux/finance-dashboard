@@ -41,7 +41,7 @@ const config: ExpoConfig = {
   plugins: ["expo-router", "expo-secure-store", "expo-web-browser"],
   scheme: "finance-dashboard",
   extra: {
-    apiUrl: process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001",
+    apiUrl: process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3011",
     eas: {
       projectId: "99316aa0-a650-4013-bc02-75ccfdfe8b0a",
     },

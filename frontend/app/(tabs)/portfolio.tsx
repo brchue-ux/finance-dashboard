@@ -22,10 +22,9 @@ import { ConversationSheet } from "@/components/llm/ConversationSheet";
 import { COLORS } from "@/constants/theme";
 import { usePortfolio, useSyncPortfolio, useRenameAccount, type AccountGroup } from "@/hooks/usePortfolio";
 import { useLLMCards, useForceReanalyze } from "@/hooks/useBudget";
+import { formatMoney } from "@/lib/money";
 
-function money(n: number) {
-  return "$" + n.toLocaleString("en-CA", { maximumFractionDigits: 0 });
-}
+const money = (n: number) => formatMoney(n);
 
 const GROUP_LABELS: Record<string, string> = {
   tfsa: "TFSA",

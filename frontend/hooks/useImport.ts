@@ -45,7 +45,7 @@ export interface ImportPreview {
 }
 
 /** Imported rows land in transactions, so budget/bank views must refetch. */
-function useImportMutation<TArgs>(fn: (args: TArgs) => Promise<ImportResult>) {
+function useImportMutation<TArgs, TResult extends ImportResult>(fn: (args: TArgs) => Promise<TResult>) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: fn,
@@ -136,21 +136,50 @@ function useSpreadsheetConnect(provider: "google" | "excel") {
 export const useConnectGoogleSheets = () => useSpreadsheetConnect("google");
 export const useConnectExcel = () => useSpreadsheetConnect("excel");
 
+/** Sync body: explicit config, or `{ useSaved: true }` to replay the last one.
+ *  `previewOnly` reports category matches without importing (item-7 parity). */
+export type SpreadsheetSyncBody = (
+  | { file: string; worksheet: string; mapping: CsvMapping; negateAmounts?: boolean }
+  | { useSaved: true }
+) & { previewOnly?: boolean; categoryMappings?: Record<string, string> };
+
+/** previewOnly responses carry the category analysis instead of import counts —
+ *  discriminate on `matched`. */
+export type SpreadsheetSyncResponse = ImportResult & {
+  matched?: MatchedCategory[];
+  unmatched?: UnmatchedCategory[];
+  envelopeNames?: string[];
+};
+
 export function useSyncSpreadsheet(provider: "google" | "excel") {
-  return useImportMutation(
-    (body: { file: string; worksheet: string; mapping?: CsvMapping; negateAmounts?: boolean }) =>
-      api.post<ImportResult>(`/api/import/${provider}/sync`, body)
+  return useImportMutation((body: SpreadsheetSyncBody) =>
+    api.post<SpreadsheetSyncResponse>(`/api/import/${provider}/sync`, body)
   );
 }
 
-/** The connected OneDrive's workbooks, plus connection status for the card. */
+/** The connected OneDrive's workbooks, plus connection + saved-sync state. */
 export function useExcelFiles() {
   return useQuery({
     queryKey: ["import-connections", "excel-files"],
     queryFn: () =>
-      api.get<{ configured: boolean; connected: boolean; files: { name: string; path: string }[] }>(
-        "/api/import/excel/files"
-      ),
+      api.get<{
+        configured: boolean;
+        connected: boolean;
+        files: { name: string; path: string }[];
+        saved?: { file: string; worksheet: string } | null;
+        lastSyncedAt?: number | null;
+        autoSync?: boolean;
+      }>("/api/import/excel/files"),
+  });
+}
+
+/** Opt in/out of the nightly re-sync of the saved workbook config. */
+export function useExcelAutoSync() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      api.patch<{ ok: true; autoSync: boolean }>("/api/import/excel/auto-sync", { enabled }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["import-connections"] }),
   });
 }
 
