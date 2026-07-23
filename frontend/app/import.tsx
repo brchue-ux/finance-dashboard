@@ -21,7 +21,6 @@ import {
   useImportCsv,
   useImportPreviewCsv,
   useConnectGoogleSheets,
-  useConnectExcel,
   readFileText,
   parseCsvHeaders,
   amountSignProfile,
@@ -79,7 +78,6 @@ export default function ImportScreen() {
   const importCsv = useImportCsv();
   const previewCsv = useImportPreviewCsv();
   const connectGoogle = useConnectGoogleSheets();
-  const connectExcel = useConnectExcel();
 
   async function pickFile() {
     const res = await DocumentPicker.getDocumentAsync({
@@ -604,16 +602,12 @@ export default function ImportScreen() {
             Excel / OneDrive
           </Text>
           <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 6, lineHeight: 18 }}>
-            Needs a personal Microsoft account with OneDrive. Work or school
-            accounts without a OneDrive licence can’t expose files.
+            Sync a workbook that keeps living in your OneDrive — pick the file
+            and tab in-app, no re-export each time.
           </Text>
-          <Pressable
-            onPress={() => connectExcel.mutate(undefined)}
-            disabled={connectExcel.isPending}
-            style={{ marginTop: 12 }}
-          >
+          <Pressable onPress={() => router.push("/import-excel" as never)} style={{ marginTop: 12 }}>
             <Text style={{ color: COLORS.brandPurple, fontWeight: "600", fontSize: 14 }}>
-              {connectExcel.isPending ? "Opening…" : "Connect Excel"}
+              Open Excel import ›
             </Text>
           </Pressable>
         </GlassCard>

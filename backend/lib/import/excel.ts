@@ -129,6 +129,68 @@ export async function excelAccessTokenForUser(
   return { accessToken: result.accessToken, connection: conn };
 }
 
+async function graphGet<T>(accessToken: string, url: string): Promise<T> {
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Graph ${res.status}: ${detail.slice(0, 300)}`);
+  }
+  return (await res.json()) as T;
+}
+
+/**
+ * The .xlsx files in the user's OneDrive, as root-relative paths the sync route
+ * accepts directly. A bounded breadth-first walk over /children, NOT drive
+ * search: search runs off an index that lags new uploads by minutes-to-hours
+ * (verified live — a file readable by direct path returned zero search hits),
+ * and a picker that can't see the sheet you just uploaded reads as broken.
+ * Personal drives are small; the depth/folder caps bound the worst case.
+ */
+const WALK_MAX_DEPTH = 3;
+const WALK_MAX_FOLDERS = 50;
+
+export async function listExcelFiles(
+  accessToken: string
+): Promise<{ name: string; path: string }[]> {
+  const out: { name: string; path: string }[] = [];
+  // Queue of folder paths relative to the drive root ("" = root itself).
+  let frontier: { path: string; depth: number }[] = [{ path: "", depth: 0 }];
+  let foldersVisited = 0;
+
+  while (frontier.length > 0 && foldersVisited < WALK_MAX_FOLDERS) {
+    const { path, depth } = frontier.shift()!;
+    foldersVisited++;
+
+    const url = path
+      ? `https://graph.microsoft.com/v1.0/me/drive/root:/${encodeURI(path)}:/children?$select=name,file,folder&$top=200`
+      : "https://graph.microsoft.com/v1.0/me/drive/root/children?$select=name,file,folder&$top=200";
+    const data = await graphGet<{ value?: { name: string; file?: object; folder?: object }[] }>(
+      accessToken,
+      url
+    );
+
+    for (const item of data.value ?? []) {
+      const childPath = path ? `${path}/${item.name}` : item.name;
+      if (item.folder && depth < WALK_MAX_DEPTH) {
+        frontier.push({ path: childPath, depth: depth + 1 });
+      } else if (item.file && item.name.toLowerCase().endsWith(".xlsx")) {
+        out.push({ name: item.name, path: childPath });
+      }
+    }
+  }
+  return out;
+}
+
+/** The worksheet (tab) names of one workbook. */
+export async function listExcelWorksheets(accessToken: string, filePath: string): Promise<string[]> {
+  const path = filePath.replace(/^\/+/, "");
+  const data = await graphGet<{ value?: { name: string }[] }>(
+    accessToken,
+    `https://graph.microsoft.com/v1.0/me/drive/root:/${encodeURI(path)}:/workbook/worksheets?$select=name`
+  );
+  return (data.value ?? []).map((w) => w.name);
+}
+
 /**
  * Read a worksheet's used range from a OneDrive-hosted workbook via Graph.
  * `filePath` is the path under the user's drive root, e.g. "Documents/budget.xlsx".

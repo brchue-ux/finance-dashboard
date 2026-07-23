@@ -1,9 +1,15 @@
 /**
- * GET /api/import/excel/callback — Microsoft OAuth redirect target. Verifies the
- * CSRF state cookie, exchanges the code, and persists the MSAL token cache.
+ * GET /api/import/excel/callback — Microsoft OAuth redirect target.
+ *
+ * Authenticates by the server-side oauth_states row alone (single-use,
+ * expiring): the state maps back to the user who started the flow, so this
+ * works from any browser — the device's system browser and the manual
+ * paste-back flow carry no app session, and must not need one.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth-guard";
+import { db } from "@/db";
+import { oauthStates } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 import { exchangeExcelCode } from "@/lib/import/excel";
 
 function closePage(message: string): NextResponse {
@@ -14,9 +20,6 @@ function closePage(message: string): NextResponse {
 }
 
 export async function GET(req: NextRequest) {
-  const authed = await requireUser(req);
-  if ("response" in authed) return authed.response;
-
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
   const state = searchParams.get("state");
@@ -24,14 +27,19 @@ export async function GET(req: NextRequest) {
   if (oauthError) return closePage(`Microsoft authorization was cancelled (${oauthError}).`);
   if (!code || !state) return NextResponse.json({ error: "Missing code or state" }, { status: 400 });
 
-  const expectedState = req.cookies.get("ms_oauth_state")?.value;
-  if (!expectedState || expectedState !== state) {
-    return NextResponse.json({ error: "Invalid OAuth state" }, { status: 400 });
+  const [row] = await db
+    .select()
+    .from(oauthStates)
+    .where(and(eq(oauthStates.state, state), eq(oauthStates.provider, "excel")))
+    .limit(1);
+  if (!row || row.expiresAt < Math.floor(Date.now() / 1000)) {
+    return NextResponse.json({ error: "Invalid or expired OAuth state" }, { status: 400 });
   }
+  // Single-use: burn the state before the exchange so a replayed callback with
+  // the same state can never race a second exchange.
+  await db.delete(oauthStates).where(eq(oauthStates.state, state));
 
-  await exchangeExcelCode(authed.userId, code);
+  await exchangeExcelCode(row.userId, code);
 
-  const res = closePage("Excel connected. You can close this window.");
-  res.cookies.delete("ms_oauth_state");
-  return res;
+  return closePage("Excel connected. You can close this window.");
 }

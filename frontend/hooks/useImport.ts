@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Platform } from "react-native";
 import * as FileSystem from "expo-file-system";
 import * as WebBrowser from "expo-web-browser";
@@ -116,7 +116,13 @@ function useSpreadsheetConnect(provider: "google" | "excel") {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      const { url } = await api.get<{ url: string }>(`/api/import/${provider}/start`);
+      // json=1 asks for { url } instead of a 307 — following the redirect here
+      // would hand Microsoft's consent HTML to res.json(). Excel's start route
+      // supports it; Google's flow is unchanged (and separately still blocked
+      // on its own console setup).
+      const { url } = await api.get<{ url: string }>(
+        `/api/import/${provider}/start${provider === "excel" ? "?json=1" : ""}`
+      );
       const result = await WebBrowser.openAuthSessionAsync(
         url,
         `finance-dashboard://${provider}-import-complete`
@@ -131,7 +137,33 @@ export const useConnectGoogleSheets = () => useSpreadsheetConnect("google");
 export const useConnectExcel = () => useSpreadsheetConnect("excel");
 
 export function useSyncSpreadsheet(provider: "google" | "excel") {
-  return useImportMutation((body: { file: string; worksheet: string; mapping?: CsvMapping }) =>
-    api.post<ImportResult>(`/api/import/${provider}/sync`, body)
+  return useImportMutation(
+    (body: { file: string; worksheet: string; mapping?: CsvMapping; negateAmounts?: boolean }) =>
+      api.post<ImportResult>(`/api/import/${provider}/sync`, body)
   );
+}
+
+/** The connected OneDrive's workbooks, plus connection status for the card. */
+export function useExcelFiles() {
+  return useQuery({
+    queryKey: ["import-connections", "excel-files"],
+    queryFn: () =>
+      api.get<{ configured: boolean; connected: boolean; files: { name: string; path: string }[] }>(
+        "/api/import/excel/files"
+      ),
+  });
+}
+
+/** A workbook's worksheets; with a worksheet chosen, its header row too. */
+export function useExcelWorkbook(file: string | null, worksheet: string | null) {
+  return useQuery({
+    queryKey: ["excel-workbook", file, worksheet],
+    enabled: file !== null,
+    queryFn: () =>
+      api.get<{ worksheets: string[]; headers?: string[] }>(
+        `/api/import/excel/workbook?file=${encodeURIComponent(file!)}${
+          worksheet ? `&worksheet=${encodeURIComponent(worksheet)}` : ""
+        }`
+      ),
+  });
 }

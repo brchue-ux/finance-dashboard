@@ -648,6 +648,23 @@ export const ohlcvCache = sqliteTable(
 // rather than reusing Better Auth's login `account` table — data-access OAuth is
 // a different concern from sign-in, and Excel isn't a login provider at all.
 // Tokens are AES-256-GCM encrypted (lib/crypto), same as Plaid/SnapTrade tokens.
+// ── oauth_states ──────────────────────────────────────────────────────────────
+// Server-side state→user mapping for OAuth callbacks. The cookie-based CSRF
+// state required the callback to arrive in the same browser session that
+// started the flow — impossible on device, where the system browser carries no
+// app session. A single-use, expiring DB row keyed by the random state makes
+// the callback self-authenticating: whoever presents the state completes the
+// connect for the user who started it, from any browser.
+export const oauthStates = sqliteTable("oauth_states", {
+  state: text("state").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id),
+  provider: text("provider").notNull(), // "excel" (google still uses the cookie flow)
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(), // unix seconds; expired rows are dead
+});
+
 export const spreadsheetConnections = sqliteTable(
   "spreadsheet_connections",
   {
