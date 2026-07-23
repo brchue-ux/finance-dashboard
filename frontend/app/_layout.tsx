@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/query-client";
 import { COLORS } from "@/constants/theme";
@@ -8,6 +9,9 @@ import "../global.css";
 
 export default function RootLayout() {
   return (
+    // Gesture-handler needs its root view above any GestureDetector (the
+    // native-thread swipe in SwipeToDismiss); flex:1 or gestures silently no-op.
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <QueryClientProvider client={queryClient}>
       <StatusBar style="light" />
       <Stack
@@ -27,5 +31,6 @@ export default function RootLayout() {
         <Stack.Screen name="snaptrade-complete" />
       </Stack>
     </QueryClientProvider>
+    </GestureHandlerRootView>
   );
 }
