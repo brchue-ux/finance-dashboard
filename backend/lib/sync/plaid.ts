@@ -7,7 +7,7 @@ import { bankConnections, bankAccounts, transactions } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { decrypt } from "@/lib/crypto";
 import { plaidClient } from "@/lib/plaid";
-import { categorize } from "@/lib/categorization";
+import { categorize, rulesForRow } from "@/lib/categorization";
 import { loadCategorizationContext } from "@/lib/budget/categorization-context";
 import { matchesTransferPattern } from "@/lib/budget/transfers";
 import { syncAccountsForConnection } from "@/lib/plaid-accounts";
@@ -75,7 +75,12 @@ export async function syncPlaidForUser(
           }
           const accountId = existingAcct[0].id;
 
-          const category = categorize(txn.name, parsedEnvelopes, learnedRules);
+          // Learned rules are scoped (account / effective-from) — filter per row.
+          const category = categorize(
+            txn.name,
+            parsedEnvelopes,
+            rulesForRow(learnedRules, { accountId, date: txn.date })
+          );
           // Approved transfer patterns mark at write time (see pipeline.ts).
           const transferSource = matchesTransferPattern(txn.name, transferPatterns) ? "rule" : null;
 

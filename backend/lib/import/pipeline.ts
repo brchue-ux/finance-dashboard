@@ -12,7 +12,7 @@ import { db } from "@/db";
 import { bankAccounts, transactions } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import { categorize } from "@/lib/categorization";
+import { categorize, rulesForRow } from "@/lib/categorization";
 import { loadCategorizationContext } from "@/lib/budget/categorization-context";
 import { matchesTransferPattern } from "@/lib/budget/transfers";
 import { resolveImportCategory } from "@/lib/import/category-match";
@@ -241,7 +241,12 @@ export async function importRows(
       category = resolved.category;
       if (resolved.mapped) categorySource = "manual";
     } else {
-      category = categorize(row.description, parsedEnvelopes, learnedRules);
+      // Learned rules are scoped (account / effective-from) — filter per row.
+      category = categorize(
+        row.description,
+        parsedEnvelopes,
+        rulesForRow(learnedRules, { accountId, date: row.date })
+      );
     }
 
     await db.insert(transactions).values({

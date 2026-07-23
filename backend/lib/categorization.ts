@@ -127,6 +127,30 @@ export function ruleCatches(rule: string, description: string): boolean {
 export interface LearnedRule {
   pattern: string;
   category: string;
+  /** Scope: only apply within this account. null/absent = all accounts. */
+  accountId?: string | null;
+  /** Scope: only apply to transactions dated on/after this ISO date
+   *  (YYYY-MM-DD). null/absent = all history. "Future only" at save time. */
+  effectiveFrom?: string | null;
+}
+
+/**
+ * The learned rules that are in scope for one transaction. Rules are SCOPED,
+ * not catch-all (user decision 2026-07-22): a rule may be limited to one
+ * account and/or to transactions from its creation date forward. Scope is
+ * filtered here, per row, so `categorize()` itself stays a pure text matcher —
+ * call sites pass the row's account and date and get the applicable subset.
+ * ISO date strings compare correctly with `<`/`>=`, no Date parsing needed.
+ */
+export function rulesForRow(
+  rules: LearnedRule[],
+  row: { accountId: string; date: string }
+): LearnedRule[] {
+  return rules.filter(
+    (r) =>
+      (r.accountId == null || r.accountId === row.accountId) &&
+      (r.effectiveFrom == null || row.date >= r.effectiveFrom)
+  );
 }
 
 export function categorize(

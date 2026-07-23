@@ -15,6 +15,10 @@ export interface RulePreview {
   /** Envelope name (or "uncategorized") → how many caught rows sit there now. */
   byCurrentCategory: Record<string, number>;
   samples: string[];
+  /** Present on transactionId-mode previews: the triggering row's account, so
+   *  the proposal card can offer "only in this account" scoping. */
+  accountId?: string;
+  accountName?: string | null;
 }
 
 export interface SaveLearnedRuleResponse extends RulePreview {
@@ -33,6 +37,10 @@ export interface LearnedRule {
   learnedFromTransactionId: string | null;
   catchesAtCreation: number | null;
   createdAt: number;
+  /** Scope: null = all accounts / all history (see LearnedRuleProposal). */
+  accountId: string | null;
+  effectiveFrom: string | null;
+  accountName: string | null;
 }
 
 /** The user's saved rules, newest first. */
@@ -69,7 +77,9 @@ export function useDeleteLearnedRule() {
  */
 export function useLearnedRulePreview() {
   return useMutation({
-    mutationFn: (body: { transactionId: string } | { pattern: string }) =>
+    // accountId narrows the preview corpus to that account, so the counts shown
+    // for an account-scoped rule are the counts it can actually touch.
+    mutationFn: (body: ({ transactionId: string } | { pattern: string }) & { accountId?: string }) =>
       api.post<RulePreview>("/api/budget/learned-rules/preview", body),
   });
 }
@@ -87,6 +97,10 @@ export function useSaveLearnedRule() {
       pattern: string;
       category: string;
       learnedFromTransactionId?: string;
+      /** Scope: limit the rule to one account. */
+      accountId?: string;
+      /** Scope: apply from today forward only — history is not re-filed. */
+      futureOnly?: boolean;
     }) => api.post<SaveLearnedRuleResponse>("/api/budget/learned-rules", body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["budget"] });

@@ -18,7 +18,7 @@
  */
 import { db } from "@/db";
 import { transactions, transactionSplits } from "@/db/schema";
-import { categorize, ruleCatches } from "@/lib/categorization";
+import { categorize, ruleCatches, rulesForRow } from "@/lib/categorization";
 import type { CategorizationContext } from "@/lib/budget/categorization-context";
 import { eq } from "drizzle-orm";
 
@@ -33,6 +33,9 @@ export async function refileRowsMatching(
       description: transactions.description,
       category: transactions.category,
       categorySource: transactions.categorySource,
+      // Needed to filter scoped learned rules per row (rulesForRow).
+      accountId: transactions.accountId,
+      date: transactions.date,
     })
     .from(transactions)
     .where(eq(transactions.userId, userId));
@@ -51,7 +54,8 @@ export async function refileRowsMatching(
     if (!ruleCatches(pattern, r.description)) continue;
     if (r.categorySource === "manual") continue;
     if (splitParents.has(r.id)) continue;
-    const next = categorize(r.description, ctx.envelopes, ctx.learnedRules);
+    // Scoped rules: only the rules in scope for THIS row's account/date compete.
+    const next = categorize(r.description, ctx.envelopes, rulesForRow(ctx.learnedRules, r));
     if (next !== r.category) changes.push({ id: r.id, to: next });
   }
 

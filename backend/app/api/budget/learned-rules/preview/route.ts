@@ -17,7 +17,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
-import { transactions } from "@/db/schema";
+import { bankAccounts, transactions } from "@/db/schema";
 import { normalizeDescription } from "@/lib/categorization";
 import { previewPattern, proposeRule } from "@/lib/budget/rule-proposal";
 import { and, eq } from "drizzle-orm";
@@ -29,10 +29,17 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
 
+  // Optional account scope (rules are SCOPED, not catch-all): with accountId the
+  // corpus — and therefore every count the user sees — is that account only.
+  const scopeAccountId = typeof body?.accountId === "string" && body.accountId !== "" ? body.accountId : null;
   const corpus = await db
     .select({ description: transactions.description, category: transactions.category })
     .from(transactions)
-    .where(eq(transactions.userId, userId));
+    .where(
+      scopeAccountId
+        ? and(eq(transactions.userId, userId), eq(transactions.accountId, scopeAccountId))
+        : eq(transactions.userId, userId)
+    );
 
   // Explicit pattern wins — a user who is actively widening/narrowing has typed
   // one, and re-previewing that is the whole point of the box.
@@ -46,14 +53,25 @@ export async function POST(req: NextRequest) {
 
   if (typeof body?.transactionId === "string") {
     const [txn] = await db
-      .select({ description: transactions.description })
+      .select({
+        description: transactions.description,
+        accountId: transactions.accountId,
+        accountName: bankAccounts.name,
+      })
       .from(transactions)
+      .leftJoin(bankAccounts, eq(transactions.accountId, bankAccounts.id))
       .where(and(eq(transactions.id, body.transactionId), eq(transactions.userId, userId)))
       .limit(1);
     // 404, never 403: same rule as the rest of the transaction routes — an id
     // that isn't yours is indistinguishable from one that doesn't exist.
     if (!txn) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json(proposeRule(txn.description, corpus));
+    // The triggering row's account rides along so the proposal card can offer
+    // "only in this account" without the host threading extra props.
+    return NextResponse.json({
+      ...proposeRule(txn.description, corpus),
+      accountId: txn.accountId,
+      accountName: txn.accountName,
+    });
   }
 
   return NextResponse.json(

@@ -277,6 +277,14 @@ export const learnedRules = sqliteTable(
     // "learned from <merchant>". Nullable: the teaching row may later be deleted,
     // but the rule it taught outlives it.
     learnedFromTransactionId: text("learned_from_transaction_id"),
+    // Scope (user decision 2026-07-22: rules are SCOPED, not catch-all).
+    // null = all accounts; set = only rows in this account. No FK cascade: if
+    // the account is ever deleted the rule simply stops matching anything.
+    accountId: text("account_id"),
+    // null = applies to all history; set (ISO YYYY-MM-DD) = only transactions
+    // dated on/after it — "future only" saves store the save date here, so a
+    // later bulk recategorize can never drag the rule backward over history.
+    effectiveFrom: text("effective_from"),
     // The catch count the user saw when they approved the rule — an audit of what
     // they actually agreed to, so a later "why did this grab 40 rows?" has an
     // answer that isn't a guess.

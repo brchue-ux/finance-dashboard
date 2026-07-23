@@ -24,7 +24,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { transactionSplits, transactions } from "@/db/schema";
-import { UNCATEGORIZED, categorize } from "@/lib/categorization";
+import { UNCATEGORIZED, categorize, rulesForRow } from "@/lib/categorization";
 import { loadCategorizationContext } from "@/lib/budget/categorization-context";
 import { eq } from "drizzle-orm";
 import { withJobRun } from "@/lib/jobs/job-runs";
@@ -56,6 +56,9 @@ export async function POST(req: NextRequest) {
           description: transactions.description,
           category: transactions.category,
           categorySource: transactions.categorySource,
+          // Needed to filter scoped learned rules per row (rulesForRow).
+          accountId: transactions.accountId,
+          date: transactions.date,
         })
         .from(transactions)
         .where(eq(transactions.userId, userId));
@@ -85,7 +88,7 @@ export async function POST(req: NextRequest) {
           continue;
         }
         if (onlyUncategorized && t.category && t.category !== UNCATEGORIZED) continue;
-        const next = categorize(t.description, parsedEnvelopes, learnedRules);
+        const next = categorize(t.description, parsedEnvelopes, rulesForRow(learnedRules, t));
         if (next !== t.category) changes.push({ id: t.id, to: next });
       }
 

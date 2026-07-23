@@ -5,7 +5,7 @@
  * an actual transaction description, not invented.
  */
 import { describe, it, expect } from "vitest";
-import { categorize, normalizeDescription, DEFAULT_RULES, type Envelope } from "./categorization";
+import { categorize, normalizeDescription, rulesForRow, DEFAULT_RULES, type Envelope } from "./categorization";
 
 /** The shipped ruleset, in the order the app applies it. */
 const envelopes: Envelope[] = Object.entries(DEFAULT_RULES).map(
@@ -278,5 +278,49 @@ describe("normalizeDescription — merchant identity", () => {
     expect(normalizeDescription("EFT Deposit from STERICYCLE  ULC")).toBe(
       normalizeDescription("EFT Deposit from STERICYCLE ULC")
     );
+  });
+});
+
+describe("rulesForRow — scoped learned rules (user decision 2026-07-22)", () => {
+  const rules = [
+    { pattern: "AMZN", category: "Shopping" }, // unscoped
+    { pattern: "TIM HORTONS", category: "Work Food", accountId: "acct-work" },
+    { pattern: "NETFLIX", category: "Streaming", effectiveFrom: "2026-07-01" },
+    { pattern: "SHELL", category: "Truck", accountId: "acct-work", effectiveFrom: "2026-07-01" },
+  ];
+  it("unscoped rules apply everywhere, always", () => {
+    const out = rulesForRow(rules, { accountId: "acct-personal", date: "2020-01-01" });
+    expect(out.map((r) => r.pattern)).toEqual(["AMZN"]);
+  });
+
+  it("account-scoped rules fire only in their account", () => {
+    const inAcct = rulesForRow(rules, { accountId: "acct-work", date: "2020-01-01" });
+    expect(inAcct.map((r) => r.pattern)).toContain("TIM HORTONS");
+    const other = rulesForRow(rules, { accountId: "acct-personal", date: "2020-01-01" });
+    expect(other.map((r) => r.pattern)).not.toContain("TIM HORTONS");
+  });
+
+  it("effective-from rules skip rows dated before the bound, inclusive on the day", () => {
+    expect(rulesForRow(rules, { accountId: "x", date: "2026-06-30" }).map((r) => r.pattern)).not.toContain("NETFLIX");
+    expect(rulesForRow(rules, { accountId: "x", date: "2026-07-01" }).map((r) => r.pattern)).toContain("NETFLIX");
+  });
+
+  it("both scopes must hold together", () => {
+    const hit = rulesForRow(rules, { accountId: "acct-work", date: "2026-07-02" });
+    expect(hit.map((r) => r.pattern)).toContain("SHELL");
+    expect(rulesForRow(rules, { accountId: "acct-work", date: "2026-06-30" }).map((r) => r.pattern)).not.toContain("SHELL");
+    expect(rulesForRow(rules, { accountId: "acct-personal", date: "2026-07-02" }).map((r) => r.pattern)).not.toContain("SHELL");
+  });
+
+  it("a scoped-out rule cannot categorize: end to end through categorize()", () => {
+    const envelopes: Envelope[] = [
+      { name: "Groceries", categoryRules: ["METRO"], sortOrder: 1 } as unknown as Envelope,
+    ];
+    // In-scope: learned rule wins. Out-of-scope: falls to seed/uncategorized.
+    const learned = [{ pattern: "METRO", category: "Work Lunches", accountId: "acct-work" }];
+    const inScope = categorize("METRO #123", envelopes, rulesForRow(learned, { accountId: "acct-work", date: "2026-07-01" }));
+    const outScope = categorize("METRO #123", envelopes, rulesForRow(learned, { accountId: "acct-home", date: "2026-07-01" }));
+    expect(inScope).toBe("Work Lunches");
+    expect(outScope).toBe("Groceries");
   });
 });

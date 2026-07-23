@@ -43,7 +43,13 @@ export async function loadCategorizationContext(
   }));
 
   const ruleRows = await db
-    .select({ pattern: learnedRules.pattern, category: learnedRules.category })
+    .select({
+      pattern: learnedRules.pattern,
+      category: learnedRules.category,
+      // Scope fields ride along so per-row call sites can filter via rulesForRow.
+      accountId: learnedRules.accountId,
+      effectiveFrom: learnedRules.effectiveFrom,
+    })
     .from(learnedRules)
     .where(eq(learnedRules.userId, userId));
 

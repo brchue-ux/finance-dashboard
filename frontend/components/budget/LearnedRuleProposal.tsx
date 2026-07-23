@@ -27,6 +27,30 @@ import { useLearnedRulePreview, useSaveLearnedRule, type RulePreview } from "@/h
 const UNCATEGORIZED = "uncategorized";
 const DEBOUNCE_MS = 350;
 
+/** Small two-state scope selector chip, matching the app's chip idiom. */
+function ScopeChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: active ? COLORS.brandPurple : COLORS.glassBorder,
+        backgroundColor: active ? "rgba(124,58,237,0.15)" : "transparent",
+      }}
+    >
+      <Text
+        style={{ color: active ? COLORS.textPrimary : COLORS.textMuted, fontSize: 13, fontWeight: "600" }}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 export function LearnedRuleProposal({
   transactionId,
   category,
@@ -44,19 +68,31 @@ export function LearnedRuleProposal({
   const [pattern, setPattern] = useState<string | null>(null);
   const [result, setResult] = useState<RulePreview | null>(null);
 
+  // Scope (rules are SCOPED, not catch-all). The triggering row's account comes
+  // back on the first preview; scoping to it is a one-tap choice, not a picker.
+  const [account, setAccount] = useState<{ id: string; name: string } | null>(null);
+  const [thisAccountOnly, setThisAccountOnly] = useState(false);
+  const [futureOnly, setFutureOnly] = useState(false);
+
   // Seed the pattern from the default proposal for this transaction. The
   // [pattern] effect below does every preview after that, so this call only
   // establishes the starting text.
   useEffect(() => {
     preview.mutate(
       { transactionId },
-      { onSuccess: (r) => setPattern(r.pattern) }
+      {
+        onSuccess: (r) => {
+          setPattern(r.pattern);
+          if (r.accountId) setAccount({ id: r.accountId, name: r.accountName ?? "this account" });
+        },
+      }
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactionId]);
 
-  // Re-preview whenever the pattern settles, debounced so a preview isn't fired
-  // on every keystroke.
+  // Re-preview whenever the pattern or the account scope settles, debounced so
+  // a preview isn't fired on every keystroke. Counts always reflect the scope
+  // being saved — an account-scoped rule shows only that account's catches.
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (pattern === null) return;
@@ -67,19 +103,28 @@ export function LearnedRuleProposal({
         setResult(null);
         return;
       }
-      preview.mutate({ pattern: trimmed }, { onSuccess: setResult });
+      preview.mutate(
+        { pattern: trimmed, ...(thisAccountOnly && account ? { accountId: account.id } : {}) },
+        { onSuccess: setResult }
+      );
     }, DEBOUNCE_MS);
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pattern]);
+  }, [pattern, thisAccountOnly]);
 
   function onSave() {
     const trimmed = (pattern ?? "").trim();
     if (trimmed === "") return;
     save.mutate(
-      { pattern: trimmed, category, learnedFromTransactionId: transactionId },
+      {
+        pattern: trimmed,
+        category,
+        learnedFromTransactionId: transactionId,
+        ...(thisAccountOnly && account ? { accountId: account.id } : {}),
+        ...(futureOnly ? { futureOnly: true } : {}),
+      },
       {
         onSuccess: onDone,
         onError: (e: unknown) =>
@@ -129,7 +174,28 @@ export function LearnedRuleProposal({
             Widen it to catch more (e.g. drop the location), or narrow it to catch fewer.
           </Text>
 
-          <ImpactSummary result={result} target={category} pending={preview.isPending} />
+          {/* Scope — rules are scoped, not catch-all. Both rows default to the
+              widest choice; narrowing is a visible tap, mirroring the pattern
+              box's propose-don't-impose stance. */}
+          <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 16, marginBottom: 6 }}>
+            WHERE IT APPLIES
+          </Text>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <ScopeChip label="All accounts" active={!thisAccountOnly} onPress={() => setThisAccountOnly(false)} />
+            {account && (
+              <ScopeChip
+                label={`Only ${account.name}`}
+                active={thisAccountOnly}
+                onPress={() => setThisAccountOnly(true)}
+              />
+            )}
+          </View>
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+            <ScopeChip label="Past + future" active={!futureOnly} onPress={() => setFutureOnly(false)} />
+            <ScopeChip label="Future only" active={futureOnly} onPress={() => setFutureOnly(true)} />
+          </View>
+
+          <ImpactSummary result={result} target={category} pending={preview.isPending} futureOnly={futureOnly} />
         </>
       )}
 
@@ -171,10 +237,12 @@ function ImpactSummary({
   result,
   target,
   pending,
+  futureOnly,
 }: {
   result: RulePreview | null;
   target: string;
   pending: boolean;
+  futureOnly: boolean;
 }) {
   if (!result) {
     return (
@@ -190,10 +258,19 @@ function ImpactSummary({
   return (
     <View style={{ marginTop: 16 }}>
       <Text style={{ color: COLORS.textPrimary, fontSize: 15, fontWeight: "600" }}>
-        Catches {result.catches} transaction{result.catches === 1 ? "" : "s"}
+        {futureOnly
+          ? `Matches ${result.catches} past transaction${result.catches === 1 ? "" : "s"} — none will move`
+          : `Catches ${result.catches} transaction${result.catches === 1 ? "" : "s"}`}
         {pending ? "  …" : ""}
       </Text>
-      {entries.length > 0 && (
+      {futureOnly && (
+        <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 4 }}>
+          Only new transactions from today on will be filed as {target}.
+        </Text>
+      )}
+      {/* The move/fill breakdown only matters when history will actually be
+          re-filed — under future-only it would warn about moves that won't happen. */}
+      {!futureOnly && entries.length > 0 && (
         <View style={{ marginTop: 8, gap: 4 }}>
           {entries.map(([cat, n]) => {
             const isTarget = cat.trim().toLowerCase() === targetKey;

@@ -119,6 +119,17 @@ export default function ManageLearnedRulesScreen() {
                         {rule.catchesAtCreation === 1 ? "" : "s"} when saved
                       </Text>
                     )}
+                    {/* Scope, only when narrowed — unscoped rules stay unadorned. */}
+                    {(rule.accountId || rule.effectiveFrom) && (
+                      <Text style={{ color: COLORS.brandPurple, fontSize: 12, marginTop: 4 }}>
+                        {[
+                          rule.accountId ? `Only ${rule.accountName ?? "one account"}` : null,
+                          rule.effectiveFrom ? `From ${rule.effectiveFrom}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </Text>
+                    )}
                   </View>
                   <Pressable
                     onPress={() => confirmDelete(rule)}
