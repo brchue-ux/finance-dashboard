@@ -81,10 +81,20 @@ export async function POST(req: NextRequest) {
   // A malformed or empty body is a client error, not a server one: an
   // unguarded req.json() turned both into a 500.
   const raw = await req.json().catch(() => null);
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return NextResponse.json(
+      { error: "Request body must be a JSON object", code: "INVALID_BODY" },
+      { status: 400 }
+    );
+  }
   const parsed = analyzeBody.safeParse(raw);
   if (!parsed.success) {
+    // Named from the issue zod actually found, so a bad `force` no longer
+    // reports a problem with `view`.
+    const issue = parsed.error.issues[0];
+    const field = issue?.path.join(".") || "body";
     return NextResponse.json(
-      { error: "view must be one of: budget, portfolio", code: "INVALID_BODY" },
+      { error: `${field}: ${issue?.message ?? "is invalid"}`, code: "INVALID_BODY" },
       { status: 400 }
     );
   }

@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth-guard";
 import { exchangeGoogleCode } from "@/lib/import/google";
 import { closePage } from "@/lib/close-page";
+import { sanitizeForLog } from "@/lib/log-safe";
 
 const TITLE = "Google connected";
 
@@ -19,10 +20,13 @@ export async function GET(req: NextRequest) {
   const code = searchParams.get("code");
   const state = searchParams.get("state");
   const oauthError = searchParams.get("error");
-  // Not reflected — see the note in the Excel callback. The provider's error
-  // string is attacker-controllable and useless to the user; log it instead.
+  // Never reflected — see the note in the Excel callback. The provider's error
+  // string is attacker-controllable and useless to the user; it goes to the
+  // server log only, sanitized.
   if (oauthError) {
-    console.warn("[import/google/callback] Google returned an OAuth error");
+    console.warn(
+      `[import/google/callback] Google returned an OAuth error: ${sanitizeForLog(oauthError)}`
+    );
     return closePage(TITLE, "Google authorization was cancelled. You can close this window.");
   }
   if (!code || !state) return NextResponse.json({ error: "Missing code or state" }, { status: 400 });

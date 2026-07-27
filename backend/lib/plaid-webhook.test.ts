@@ -6,9 +6,22 @@
  * tests exercise the real ES256 verification, the real body-hash binding and
  * the real replay window against tokens this file signs itself.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createHash, generateKeyPairSync, sign as signWith } from "crypto";
-import { verifyPlaidWebhook, type PlaidVerificationJwk } from "./plaid-webhook";
+
+const webhookVerificationKeyGet = vi.fn();
+vi.mock("@/lib/plaid", () => ({
+  plaidClient: { webhookVerificationKeyGet: (...a: unknown[]) => webhookVerificationKeyGet(...a) },
+}));
+
+import {
+  verifyPlaidWebhook,
+  fetchPlaidVerificationKey,
+  clearPlaidKeyCacheForTests,
+  plaidKeyCacheSizeForTests,
+  isPlausiblePlaidKid,
+  type PlaidVerificationJwk,
+} from "./plaid-webhook";
 
 const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
 const jwk = publicKey.export({ format: "jwk" }) as unknown as PlaidVerificationJwk;
@@ -222,5 +235,96 @@ describe("verifyPlaidWebhook", () => {
       fetchKey,
     });
     expect(result).toEqual({ ok: false, error: "Body does not match token hash" });
+  });
+
+  it("rejects a token dated in the future, so the replay window is two-sided", async () => {
+    const iat = Math.floor(Date.now() / 1000) + 86_400;
+    const result = await verifyPlaidWebhook({
+      header: makeToken({ body: BODY, iat }),
+      rawBody: BODY,
+      fetchKey,
+    });
+    expect(result).toEqual({ ok: false, error: "Token is dated in the future" });
+  });
+
+  it("tolerates clock skew of a few seconds", async () => {
+    const iat = Math.floor(Date.now() / 1000) + 5;
+    const result = await verifyPlaidWebhook({
+      header: makeToken({ body: BODY, iat }),
+      rawBody: BODY,
+      fetchKey,
+    });
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe("verifyPlaidWebhook — key-id shape gate", () => {
+  it("accepts the shape a real Plaid key id has", () => {
+    expect(isPlausiblePlaidKid("6c5516e1-92dc-479e-a8ff-5a51992e0001")).toBe(true);
+  });
+
+  it.each([
+    ["an over-long kid", "a".repeat(65)],
+    ["a kid carrying separators", "abc/../def"],
+    ["a kid carrying whitespace", "abc def"],
+    ["a kid carrying newlines", "abc\ndef"],
+  ])("rejects %s", (_label, kid) => {
+    expect(isPlausiblePlaidKid(kid)).toBe(false);
+  });
+
+  it("rejects an implausible kid before the fetcher is ever called", async () => {
+    const spy = vi.fn(async () => jwk);
+    const result = await verifyPlaidWebhook({
+      header: makeToken({ body: BODY, kid: "x".repeat(4096) }),
+      rawBody: BODY,
+      fetchKey: spy,
+    });
+    expect(result).toEqual({ ok: false, error: "Token has an implausible key id" });
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The cache is reachable by unauthenticated callers who choose both the key and
+ * its length, so growth and outbound amplification are what these cover.
+ */
+describe("fetchPlaidVerificationKey — cache and lookup bounds", () => {
+  beforeEach(() => {
+    clearPlaidKeyCacheForTests();
+    webhookVerificationKeyGet.mockReset();
+    webhookVerificationKeyGet.mockResolvedValue({ data: { key: jwk } });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    clearPlaidKeyCacheForTests();
+  });
+
+  it("never calls Plaid for an implausible kid", async () => {
+    await expect(fetchPlaidVerificationKey("y".repeat(4096))).resolves.toBeNull();
+    expect(webhookVerificationKeyGet).not.toHaveBeenCalled();
+    expect(plaidKeyCacheSizeForTests()).toBe(0);
+  });
+
+  it("serves a repeated kid from cache instead of re-fetching", async () => {
+    await fetchPlaidVerificationKey(KID);
+    await fetchPlaidVerificationKey(KID);
+    expect(webhookVerificationKeyGet).toHaveBeenCalledTimes(1);
+  });
+
+  it("caps outbound lookups across a flood of UNIQUE kids", async () => {
+    for (let i = 0; i < 200; i += 1) await fetchPlaidVerificationKey(`bogus-kid-${i}`);
+    expect(webhookVerificationKeyGet.mock.calls.length).toBeLessThanOrEqual(20);
+  });
+
+  it("keeps the cache bounded across many windows of unique kids", async () => {
+    vi.useFakeTimers();
+    for (let window = 0; window < 20; window += 1) {
+      for (let i = 0; i < 20; i += 1) {
+        await fetchPlaidVerificationKey(`kid-${window}-${i}`);
+      }
+      await vi.advanceTimersByTimeAsync(61_000);
+    }
+    expect(plaidKeyCacheSizeForTests()).toBeLessThanOrEqual(32);
   });
 });

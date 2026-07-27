@@ -82,6 +82,34 @@ describe("POST /api/llm/analyze — input validation", () => {
     expect(res.status).toBe(400);
   });
 
+  it("names the field that actually failed, not always `view`", async () => {
+    const res = await POST(analyzeRequest(JSON.stringify({ view: "budget", force: "yes" })));
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; code: string };
+    expect(body.code).toBe("INVALID_BODY");
+    expect(body.error).toContain("force");
+    expect(body.error).not.toContain("view");
+    expect(generateCards).not.toHaveBeenCalled();
+  });
+
+  it("reports a malformed body as a body problem rather than a `view` problem", async () => {
+    const res = await POST(analyzeRequest("not-json"));
+    const body = (await res.json()) as { error: string };
+    expect(body.error).not.toContain("view");
+  });
+
+  it("still points at `view` when `view` is the bad field", async () => {
+    const res = await POST(analyzeRequest(JSON.stringify({ view: "totally-made-up" })));
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("view");
+  });
+
+  it("returns 400 for a JSON array body", async () => {
+    const res = await POST(analyzeRequest("[]"));
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ code: "INVALID_BODY" });
+  });
+
   it("accepts the two known views", async () => {
     for (const view of ["budget", "portfolio"]) {
       const res = await POST(analyzeRequest(JSON.stringify({ view })));

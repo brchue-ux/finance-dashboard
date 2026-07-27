@@ -13,9 +13,14 @@
  *      algorithm the token names is the classic JWT confusion bug (`none`, or
  *      HS256 verified against the public key as an HMAC secret).
  *   2. The `kid` names a key fetched from `/webhook_verification_key/get`.
- *      Keys are looked up per `kid` and cached; Plaid rotates them.
+ *      Keys are looked up per `kid` and cached; Plaid rotates them. The `kid` is
+ *      attacker-controlled and is read BEFORE anything is verified, so it is
+ *      shape-checked first and both the cache and the outbound lookup rate are
+ *      bounded — otherwise a flood of unique bogus kids would grow the cache
+ *      without limit and amplify into Plaid's API.
  *   3. The signature is verified against that key.
- *   4. `iat` must be recent, so a captured webhook cannot be replayed forever.
+ *   4. `iat` must be recent AND not meaningfully in the future, so the replay
+ *      window is bounded on both sides.
  *   5. The body's SHA-256 must equal the `request_body_sha256` claim. Steps 1-4
  *      only prove the *token* is Plaid's; this is what binds it to THIS body.
  *      Skipping it would let an attacker replay a genuine token with a
@@ -54,6 +59,24 @@ export type PlaidWebhookVerification =
  */
 const MAX_TOKEN_AGE_SECONDS = 5 * 60;
 
+/**
+ * The other half of the window: a token dated in the future would otherwise
+ * satisfy the max-age check forever. Only clock skew is allowed for.
+ */
+const MAX_TOKEN_SKEW_SECONDS = 60;
+
+/**
+ * Plaid key ids are short opaque tokens. Anything outside this shape cannot be
+ * a real kid, so it is rejected before it is ever used as a cache key or sent
+ * upstream — that is what keeps an unauthenticated caller from choosing both
+ * the key and the length of a cache entry.
+ */
+const KID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+export function isPlausiblePlaidKid(kid: string): boolean {
+  return KID_PATTERN.test(kid);
+}
+
 function decodeBase64Url(segment: string): Buffer {
   return Buffer.from(segment, "base64url");
 }
@@ -83,9 +106,19 @@ function constantTimeEquals(a: string, b: string): boolean {
  *
  * Failures get a short negative TTL of their own: without it, a flood of
  * requests bearing a bogus `kid` would turn into a flood of outbound calls.
+ * That TTL is per-kid, so it only rate-limits repeats of the SAME kid; the
+ * cache cap and the cross-kid lookup budget below are what bound a flood of
+ * UNIQUE ones, which is the shape an unauthenticated caller actually controls.
  */
 const KEY_TTL_MS = 24 * 60 * 60 * 1000;
 const NEGATIVE_TTL_MS = 60 * 1000;
+
+/** Only a handful of real Plaid keys ever exist; anything past this is noise. */
+const MAX_CACHE_ENTRIES = 32;
+
+/** Cross-kid ceiling on outbound `/webhook_verification_key/get` calls. */
+const LOOKUP_WINDOW_MS = 60 * 1000;
+const MAX_LOOKUPS_PER_WINDOW = 20;
 
 interface CacheEntry {
   key: PlaidVerificationJwk | null;
@@ -94,9 +127,50 @@ interface CacheEntry {
 
 const keyCache = new Map<string, CacheEntry>();
 
+let lookupWindowStart = 0;
+let lookupsInWindow = 0;
+
 /** Exported for tests; production code never needs to clear the cache. */
 export function clearPlaidKeyCacheForTests(): void {
   keyCache.clear();
+  lookupWindowStart = 0;
+  lookupsInWindow = 0;
+}
+
+/** Exported for tests so the cache cap is assertable without internals. */
+export function plaidKeyCacheSizeForTests(): number {
+  return keyCache.size;
+}
+
+/**
+ * Insertion order is eviction order, and a re-set moves an entry to the back,
+ * so the cap behaves as an LRU over a set that is only ever a few keys deep in
+ * real use.
+ */
+function rememberKey(kid: string, entry: CacheEntry): void {
+  const now = Date.now();
+  for (const [cachedKid, cached] of keyCache) {
+    if (cached.expiresAt <= now) keyCache.delete(cachedKid);
+  }
+  keyCache.delete(kid);
+  keyCache.set(kid, entry);
+  while (keyCache.size > MAX_CACHE_ENTRIES) {
+    const oldest = keyCache.keys().next();
+    if (oldest.done) break;
+    keyCache.delete(oldest.value);
+  }
+}
+
+/** False once the window's budget is spent, so the caller fails closed. */
+function claimLookupBudget(): boolean {
+  const now = Date.now();
+  if (now - lookupWindowStart >= LOOKUP_WINDOW_MS) {
+    lookupWindowStart = now;
+    lookupsInWindow = 0;
+  }
+  if (lookupsInWindow >= MAX_LOOKUPS_PER_WINDOW) return false;
+  lookupsInWindow += 1;
+  return true;
 }
 
 /**
@@ -105,8 +179,19 @@ export function clearPlaidKeyCacheForTests(): void {
  * rejection — failing closed is correct for a write path.
  */
 export const fetchPlaidVerificationKey: PlaidKeyFetcher = async (kid) => {
+  if (!isPlausiblePlaidKid(kid)) return null;
+
   const cached = keyCache.get(kid);
-  if (cached && cached.expiresAt > Date.now()) return cached.key;
+  if (cached && cached.expiresAt > Date.now()) {
+    keyCache.delete(kid);
+    keyCache.set(kid, cached);
+    return cached.key;
+  }
+
+  if (!claimLookupBudget()) {
+    console.warn("[plaid-webhook] verification key lookup budget exhausted; rejecting");
+    return null;
+  }
 
   let key: PlaidVerificationJwk | null = null;
   try {
@@ -118,7 +203,7 @@ export const fetchPlaidVerificationKey: PlaidKeyFetcher = async (kid) => {
     key = null;
   }
 
-  keyCache.set(kid, {
+  rememberKey(kid, {
     key,
     expiresAt: Date.now() + (key ? KEY_TTL_MS : NEGATIVE_TTL_MS),
   });
@@ -134,6 +219,7 @@ export async function verifyPlaidWebhook(params: {
   /** Unix seconds; injectable so tests can pin token age. */
   now?: number;
   maxAgeSeconds?: number;
+  maxSkewSeconds?: number;
 }): Promise<PlaidWebhookVerification> {
   const {
     header,
@@ -141,6 +227,7 @@ export async function verifyPlaidWebhook(params: {
     fetchKey = fetchPlaidVerificationKey,
     now = Math.floor(Date.now() / 1000),
     maxAgeSeconds = MAX_TOKEN_AGE_SECONDS,
+    maxSkewSeconds = MAX_TOKEN_SKEW_SECONDS,
   } = params;
 
   if (!header) return { ok: false, error: "Missing Plaid-Verification header" };
@@ -156,6 +243,9 @@ export async function verifyPlaidWebhook(params: {
   if (jwtHeader.alg !== "ES256") return { ok: false, error: "Unsupported token algorithm" };
   const kid = jwtHeader.kid;
   if (typeof kid !== "string" || !kid) return { ok: false, error: "Token has no key id" };
+  // Gated here, not only in the fetcher, so no injected seam can be handed an
+  // unbounded attacker-chosen string either.
+  if (!isPlausiblePlaidKid(kid)) return { ok: false, error: "Token has an implausible key id" };
 
   const jwk = await fetchKey(kid);
   if (!jwk) return { ok: false, error: "Unknown verification key" };
@@ -198,6 +288,7 @@ export async function verifyPlaidWebhook(params: {
     return { ok: false, error: "Token has no issued-at claim" };
   }
   if (now - iat > maxAgeSeconds) return { ok: false, error: "Token has expired" };
+  if (iat - now > maxSkewSeconds) return { ok: false, error: "Token is dated in the future" };
 
   const claimedHash = payload.request_body_sha256;
   if (typeof claimedHash !== "string" || !claimedHash) {

@@ -12,6 +12,7 @@ import { oauthStates } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { exchangeExcelCode } from "@/lib/import/excel";
 import { closePage } from "@/lib/close-page";
+import { sanitizeForLog } from "@/lib/log-safe";
 
 const TITLE = "Excel connected";
 
@@ -20,12 +21,16 @@ export async function GET(req: NextRequest) {
   const code = searchParams.get("code");
   const state = searchParams.get("state");
   const oauthError = searchParams.get("error");
-  // The provider's own error string is deliberately NOT reflected: it tells the
-  // user nothing they can act on, and reflecting attacker-controlled text into
-  // an unauthenticated text/html response on the session-cookie origin is how
-  // this route grew an XSS. The value is logged instead, where it is useful.
+  // The provider's own error string is deliberately NOT reflected in the
+  // response, in any form: it tells the user nothing they can act on, and
+  // reflecting attacker-controlled text into an unauthenticated text/html
+  // response on the session-cookie origin is how this route grew an XSS. It
+  // goes to the server log only, CR/LF-stripped and length-capped, because a
+  // log line is a text sink an untrusted value can forge too.
   if (oauthError) {
-    console.warn("[import/excel/callback] Microsoft returned an OAuth error");
+    console.warn(
+      `[import/excel/callback] Microsoft returned an OAuth error: ${sanitizeForLog(oauthError)}`
+    );
     return closePage(TITLE, "Microsoft authorization was cancelled. You can close this window.");
   }
   if (!code || !state) return NextResponse.json({ error: "Missing code or state" }, { status: 400 });
