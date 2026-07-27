@@ -29,7 +29,7 @@ Backend is **deployed as a systemd user service** (`wayfinder-backend`, port 301
 build — code changes no longer hot-reload, ship via `npm run build && systemctl --user restart
 wayfinder-backend`), reachable at `https://homeserver.tail25a02d.ts.net:7443` via tailscale serve.
 `build-reminders.md` items 1–9 are done; item 10 (realistic seed) done; item 5 (region/currency)
-deferred. 277 tests passing.
+deferred.
 
 **Shipped and device-confirmed:** budget tab overhaul (4 group tiles → category cards → pace/trend
 detail), per-transaction recategorize + learning-rule loop, envelope proposal from the user's own
