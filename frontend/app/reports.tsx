@@ -122,7 +122,7 @@ export default function ReportsScreen() {
                     <Pressable
                       onPress={() => router.push("/manage-envelopes")}
                       accessibilityRole="button"
-                      accessibilityLabel={`Uncategorized ${money(budget.summary.unattributedSpent)} — set up categories`}
+                      accessibilityLabel={`Not in any category ${money(budget.summary.unattributedSpent)} — set up categories`}
                       style={{
                         flexDirection: "row",
                         justifyContent: "space-between",
@@ -135,7 +135,7 @@ export default function ReportsScreen() {
                       }}
                     >
                       <Text style={{ color: COLORS.textMuted, fontSize: 13, flex: 1 }} numberOfLines={1}>
-                        Uncategorized
+                        Not in any category
                       </Text>
                       <Text style={{ color: COLORS.warning, fontSize: 13, fontWeight: "600" }}>
                         {money(budget.summary.unattributedSpent)}
