@@ -125,9 +125,10 @@ export function CategoryPicker({
                 {/* Envelope names are user-chosen and can be long. Without
                     flex/minWidth the label pushes the marker into shrinking —
                     measured 59px of "✓ current" squeezed into 44px, so the
-                    marker read as cut off. The label yields instead. */}
+                    marker read as cut off. The label takes the remaining space
+                    and wraps instead, growing the row's height; a picker has to
+                    show the whole name, so nothing here truncates it. */}
                 <Text
-                  numberOfLines={1}
                   style={{
                     color: name === UNCATEGORIZED ? COLORS.textMuted : COLORS.textPrimary,
                     fontSize: 15,

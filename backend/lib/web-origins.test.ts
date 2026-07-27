@@ -13,31 +13,60 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { webOrigins } from "./web-origins";
 
-/** The port `npm start --workspace=frontend` actually binds Metro to. */
-function metroStartPort(): number {
+/**
+ * Every port a script in frontend/package.json binds Metro to, keyed by script
+ * name. Any script that runs `expo start` counts: whichever one a developer
+ * runs, that dev server's origin is the one the browser sends.
+ *
+ * Parsing FAILS LOUDLY. An earlier version fell back to Metro's default 8081
+ * when the regex missed, which made the guard below pass precisely when the
+ * script changed shape — a guard that survives its own parser breaking is worse
+ * than no guard.
+ */
+function metroScriptPorts(): Map<string, number> {
   const path = fileURLToPath(new URL("../../frontend/package.json", import.meta.url));
   const pkg = JSON.parse(readFileSync(path, "utf8")) as {
     scripts?: Record<string, string>;
   };
-  const start = pkg.scripts?.start ?? "";
-  // `expo start --port 8082` — also tolerate `--port=8082`.
-  const match = start.match(/--port[= ](\d+)/);
-  // Fall back to Metro's own default only when the script names no port; a
-  // script that stops passing --port is a real change, not a test failure.
-  return match ? Number(match[1]) : 8081;
+  const scripts = Object.entries(pkg.scripts ?? {}).filter(([, cmd]) =>
+    /\bexpo\s+start\b/.test(cmd),
+  );
+
+  expect(scripts.length, "frontend/package.json has no `expo start` script").toBeGreaterThan(0);
+
+  const ports = new Map<string, number>();
+  for (const [name, cmd] of scripts) {
+    // `expo start --port 8082` — also tolerate `--port=8082` and `-p 8082`.
+    const match = cmd.match(/(?:--port|-p)[= ](\d+)/);
+    expect(
+      match,
+      `frontend script "${name}" runs expo start without an explicit --port, so ` +
+        `Metro picks a port no one trusts and web sign-in returns 403 INVALID_ORIGIN`,
+    ).not.toBeNull();
+    const port = Number(match![1]);
+    expect(Number.isInteger(port) && port > 0, `script "${name}" names a bad port`).toBe(true);
+    ports.set(name, port);
+  }
+  return ports;
 }
 
 describe("webOrigins", () => {
-  it("trusts the port frontend/package.json's start script binds Metro to", () => {
-    expect(webOrigins()).toContain(`http://localhost:${metroStartPort()}`);
+  it("trusts every port frontend/package.json binds Metro to", () => {
+    const origins = webOrigins();
+    for (const [name, port] of metroScriptPorts()) {
+      expect(origins, `frontend script "${name}" binds :${port}, absent from DEV_ORIGINS`).toContain(
+        `http://localhost:${port}`,
+      );
+    }
   });
 
-  it("parses a real port out of the start script", () => {
-    // Keeps the assertion above from passing vacuously if the script is
-    // rewritten into a form the regex no longer understands.
-    const port = metroStartPort();
-    expect(Number.isInteger(port)).toBe(true);
-    expect(port).toBeGreaterThan(0);
+  it("finds an explicit port on every expo start script", () => {
+    // metroScriptPorts() throws if a script omits --port, so this both proves
+    // the parser found real work to do and stops the assertion above from
+    // passing vacuously over an empty set.
+    const ports = metroScriptPorts();
+    expect(ports.size).toBeGreaterThan(0);
+    expect(ports.get("start")).toBeGreaterThan(0);
   });
 
   it("drops every localhost origin in production", () => {
