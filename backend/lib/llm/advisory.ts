@@ -4,7 +4,7 @@
  * changing one constant.
  */
 import { streamText, generateText, stepCountIs } from "ai";
-import { SYSTEM_PROMPT, AUTO_CARD_INSTRUCTION } from "./prompts";
+import { SYSTEM_PROMPT, autoCardInstruction } from "./prompts";
 import { assembleBudgetContext, assemblePortfolioContext } from "./context";
 import { anthropic, assembleTools } from "./tools";
 import { parseCards } from "./parse-cards";
@@ -39,7 +39,7 @@ export async function generateCards(userId: string, view: CardView) {
   const { text } = await generateText({
     model: anthropic(MODEL),
     system: SYSTEM_PROMPT + context + systemSuffix,
-    prompt: AUTO_CARD_INSTRUCTION,
+    prompt: autoCardInstruction(view),
     // Matches the batch path: tool calls draw on the same output budget, and
     // 1500 was low enough for a real request to exhaust it before any text.
     maxOutputTokens: MAX_OUTPUT_TOKENS,

@@ -2,7 +2,7 @@
  * Card-JSON extraction, shared by the nightly Batch path and the synchronous
  * generateCards() fallback so the two can't drift.
  *
- * `AUTO_CARD_INSTRUCTION` already tells the model "no markdown fences", and the
+ * `autoCardInstruction()` already tells the model "no markdown fences", and the
  * model fences anyway — that instruction alone accounted for 2 of the 4 real
  * nightly batch items that were recorded as failures. Parsing tolerates the
  * fence rather than trusting the prompt.

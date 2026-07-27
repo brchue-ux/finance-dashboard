@@ -42,7 +42,38 @@ PRIVACY: This context is private to this user. Never reference other users or ge
 DATA CONTEXT:
 `;
 
-export const AUTO_CARD_INSTRUCTION = `\
+/**
+ * Card instruction, per view. The action-card half is BUDGET-ONLY: the
+ * portfolio context carries no envelopes, so telling a portfolio request to
+ * copy envelope names "EXACTLY from the data context" and to "never invent an
+ * envelope" asks it to satisfy a contradiction. On 2026-07-23 a real nightly
+ * portfolio item answered that contradiction in prose ("No envelopes...")
+ * instead of JSON, and the whole view's cards were discarded as unusable.
+ */
+export function autoCardInstruction(view: "budget" | "portfolio"): string {
+  const actionSchema = `,
+    {
+      "type": "action",
+      "title": "...",
+      "body": "...",
+      "reasoning": "...",
+      "envelope_from": "...",
+      "envelope_to": "...",
+      "amount": 0
+    }`;
+
+  const actionRules = `\
+Action cards must include envelope_from, envelope_to, and amount.
+envelope_from and envelope_to must be copied EXACTLY from an existing envelope's
+"name" in the data context — approving a card applies the move by that name, and
+a name that doesn't exist is rejected. Never invent an envelope.
+amount must be positive and no larger than envelope_from's budgetedThisMonth.
+Insight cards omit those fields.
+`;
+
+  const isBudget = view === "budget";
+
+  return `\
 Respond with a JSON object only — no prose, no markdown fences.
 Format:
 {
@@ -52,34 +83,23 @@ Format:
       "title": "...",
       "body": "...",
       "reasoning": "..."
-    },
-    {
-      "type": "action",
-      "title": "...",
-      "body": "...",
-      "reasoning": "...",
-      "envelope_from": "...",
-      "envelope_to": "...",
-      "amount": 0
-    }
+    }${isBudget ? actionSchema : ""}
   ]
 }
-Action cards must include envelope_from, envelope_to, and amount.
-envelope_from and envelope_to must be copied EXACTLY from an existing envelope's
-"name" in the data context — approving a card applies the move by that name, and
-a name that doesn't exist is rejected. Never invent an envelope.
-amount must be positive and no larger than envelope_from's budgetedThisMonth.
-Insight cards omit those fields.
+${isBudget ? actionRules : 'Every card is type "insight". There are no action cards in this view.\n'}\
 Generate 2-5 cards. Be specific with numbers.
+If the data does not support even one card worth showing, respond with
+{"cards": []} — an empty array is a valid answer. Never explain yourself in
+prose; prose is discarded and the whole run is lost.
 
 LENGTH — these render as small cards on a phone; a paragraph destroys them:
 - title: at most 6 words. No colons chaining two thoughts.
 - body: at most 2 short sentences, ~140 characters total. Lead with the number
-  ("Dining is $210 over pace"), not with scene-setting. State the one fact and,
-  for actions, the one move. Nothing else.
+  ("Dining is $210 over pace"), not with scene-setting. State the one fact${isBudget ? ` and,
+  for actions, the one move` : ""}. Nothing else.
 - reasoning: at most 2 sentences. It is hidden behind a tap — it explains WHY,
   it does not repeat the body.
-- Never restate what the user already sees on screen (totals, month name,
-  envelope lists). If a sentence would survive with a number deleted, delete
-  the sentence instead.
+- Never restate what the user already sees on screen (totals, ${isBudget ? "month name, envelope lists" : "account names, holding tickers"}).
+  If a sentence would survive with a number deleted, delete the sentence instead.
 `;
+}

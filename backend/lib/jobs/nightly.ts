@@ -16,7 +16,7 @@ import { db } from "@/db";
 import { user, jobRuns, llmAnalysisCache, spreadsheetConnections } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import { SYSTEM_PROMPT, AUTO_CARD_INSTRUCTION } from "@/lib/llm/prompts";
+import { SYSTEM_PROMPT, autoCardInstruction } from "@/lib/llm/prompts";
 import { assembleBudgetContext, assemblePortfolioContext } from "@/lib/llm/context";
 import { NO_INDICATOR_DATA_CLAUSE } from "@/lib/llm/tools";
 import { parseCards } from "@/lib/llm/parse-cards";
@@ -162,7 +162,7 @@ async function submitCardBatch(userId: string): Promise<void> {
           model: MODEL,
           max_tokens: MAX_OUTPUT_TOKENS,
           system: SYSTEM_PROMPT + context + systemSuffix,
-          messages: [{ role: "user" as const, content: AUTO_CARD_INSTRUCTION }],
+          messages: [{ role: "user" as const, content: autoCardInstruction(view) }],
           tools: batchTools(view),
           ...(servers ? { mcp_servers: servers } : {}),
         },
