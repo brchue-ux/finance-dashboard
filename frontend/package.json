@@ -5,10 +5,12 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start --port 8082",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web",
+    "android": "expo start --android --port 8082",
+    "ios": "expo start --ios --port 8082",
+    "web": "expo start --web --port 8082",
     "build:web": "expo export --platform web",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "build:apk": "eas build --platform android --profile preview",
     "build:prod": "eas build --platform android --profile production"
   },
@@ -48,6 +50,7 @@
     "@babel/core": "^7.25.0",
     "@types/react": "~19.0.10",
     "tailwindcss": "^3.4.0",
-    "typescript": "~5.8.3"
+    "typescript": "~5.8.3",
+    "vitest": "^3.2.7"
   }
 }

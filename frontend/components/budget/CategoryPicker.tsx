@@ -96,7 +96,15 @@ export function CategoryPicker({
       {isLoading ? (
         <ActivityIndicator style={{ marginTop: 24 }} color={COLORS.textMuted} />
       ) : (
-        <ScrollView style={{ marginTop: 16, maxHeight: Dimensions.get("window").height * 0.5 }}>
+        <ScrollView
+          style={{ marginTop: 16, maxHeight: Dimensions.get("window").height * 0.5 }}
+          // The scrollbar takes its width out of the content box, so a row with
+          // no right gutter puts the last glyph of "✓ current" flush against it
+          // (measured: text ink ending at the exact content edge) and the marker
+          // reads as truncated. The gutter also keeps a native overlay scroll
+          // indicator off the marker.
+          contentContainerStyle={{ paddingRight: 8 }}
+        >
           {options.map((name) => {
             const isCurrent = name.toLowerCase() === current.toLowerCase();
             return (
@@ -114,17 +122,34 @@ export function CategoryPicker({
                   opacity: recategorize.isPending ? 0.5 : 1,
                 }}
               >
+                {/* Envelope names are user-chosen and can be long. Without
+                    flex/minWidth the label pushes the marker into shrinking —
+                    measured 59px of "✓ current" squeezed into 44px, so the
+                    marker read as cut off. The label takes the remaining space
+                    and wraps instead, growing the row's height; a picker has to
+                    show the whole name, so nothing here truncates it. */}
                 <Text
                   style={{
                     color: name === UNCATEGORIZED ? COLORS.textMuted : COLORS.textPrimary,
                     fontSize: 15,
                     fontStyle: name === UNCATEGORIZED ? "italic" : "normal",
+                    flex: 1,
+                    minWidth: 0,
                   }}
                 >
                   {name}
                 </Text>
                 {isCurrent && (
-                  <Text style={{ color: COLORS.success, fontSize: 14 }}>✓ current</Text>
+                  <Text
+                    style={{
+                      color: COLORS.success,
+                      fontSize: 14,
+                      flexShrink: 0,
+                      marginLeft: 12,
+                    }}
+                  >
+                    ✓ current
+                  </Text>
                 )}
               </Pressable>
             );

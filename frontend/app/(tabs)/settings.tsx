@@ -10,6 +10,11 @@ import { COLORS } from "@/constants/theme";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { useBudget } from "@/hooks/useBudget";
 import { signOut } from "@/lib/auth";
+import {
+  connectionNeedsAction,
+  connectionStatusColor,
+  connectionStatusLabel,
+} from "@/lib/connection-status";
 
 function timeAgo(ts: number | null | undefined): string {
   if (!ts) return "Never";
@@ -66,7 +71,7 @@ export default function SettingsScreen() {
                   Last synced {timeAgo(conn.lastSyncedAt)}
                 </Text>
               </View>
-              {conn.status === "relink_required" ? (
+              {connectionNeedsAction(conn.status) ? (
                 <Pressable
                   style={{
                     backgroundColor: COLORS.warning + "33",
@@ -79,8 +84,17 @@ export default function SettingsScreen() {
                 </Pressable>
               ) : (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                  <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: COLORS.success }} />
-                  <Text style={{ color: COLORS.success, fontSize: 13 }}>Live</Text>
+                  <View
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: 3.5,
+                      backgroundColor: connectionStatusColor(conn.status),
+                    }}
+                  />
+                  <Text style={{ color: connectionStatusColor(conn.status), fontSize: 13 }}>
+                    {connectionStatusLabel(conn.status)}
+                  </Text>
                 </View>
               )}
             </View>
@@ -103,7 +117,7 @@ export default function SettingsScreen() {
                 Last synced {timeAgo(wsConn?.lastSyncedAt)}
               </Text>
             </View>
-            {wsConn?.status === "reconnect_required" ? (
+            {connectionNeedsAction(wsConn?.status) ? (
               <Pressable
                 style={{
                   backgroundColor: COLORS.warning + "33",
@@ -121,11 +135,16 @@ export default function SettingsScreen() {
                     width: 7,
                     height: 7,
                     borderRadius: 3.5,
-                    backgroundColor: wsConn ? COLORS.success : COLORS.textMuted,
+                    backgroundColor: wsConn ? connectionStatusColor(wsConn.status) : COLORS.textMuted,
                   }}
                 />
-                <Text style={{ color: wsConn ? COLORS.success : COLORS.textMuted, fontSize: 13 }}>
-                  {wsConn ? "Live" : "Not connected"}
+                <Text
+                  style={{
+                    color: wsConn ? connectionStatusColor(wsConn.status) : COLORS.textMuted,
+                    fontSize: 13,
+                  }}
+                >
+                  {wsConn ? connectionStatusLabel(wsConn.status) : "Not connected"}
                 </Text>
               </View>
             )}
