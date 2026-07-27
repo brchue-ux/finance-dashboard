@@ -19,7 +19,9 @@ import {
   fetchPlaidVerificationKey,
   clearPlaidKeyCacheForTests,
   plaidKeyCacheSizeForTests,
+  plaidVerifiedKeyCountForTests,
   isPlausiblePlaidKid,
+  PLAID_VERIFIED_KEY_TTL_MS,
   type PlaidVerificationJwk,
 } from "./plaid-webhook";
 
@@ -326,5 +328,94 @@ describe("fetchPlaidVerificationKey — cache and lookup bounds", () => {
       await vi.advanceTimersByTimeAsync(61_000);
     }
     expect(plaidKeyCacheSizeForTests()).toBeLessThanOrEqual(32);
+  });
+});
+
+/**
+ * The availability half of F2: a caller who can only choose kids must not be
+ * able to reach a key that has actually verified a webhook — not evict it, not
+ * starve its refresh — and a key Plaid has retired must stop verifying promptly.
+ */
+describe("plaid key stores — verified keys are isolated from speculative floods", () => {
+  /** Only KID resolves; every other kid gets a JWK the importer will reject. */
+  function keyServer() {
+    webhookVerificationKeyGet.mockImplementation(async (req: unknown) => {
+      const keyId = (req as { key_id: string }).key_id;
+      return { data: { key: keyId === KID ? jwk : {} } };
+    });
+  }
+
+  function callsForKid(kid: string): number {
+    return webhookVerificationKeyGet.mock.calls.filter(
+      (call) => (call[0] as { key_id: string }).key_id === kid
+    ).length;
+  }
+
+  beforeEach(() => {
+    clearPlaidKeyCacheForTests();
+    webhookVerificationKeyGet.mockReset();
+    keyServer();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    clearPlaidKeyCacheForTests();
+  });
+
+  it("survives a sustained flood of fresh kids spanning the verified TTL", async () => {
+    vi.useFakeTimers();
+
+    // A real webhook first — the ONLY way a key enters the verified store.
+    const first = await verifyPlaidWebhook({ header: makeToken({ body: BODY }), rawBody: BODY });
+    expect(first.ok).toBe(true);
+    expect(plaidVerifiedKeyCountForTests()).toBe(1);
+
+    // Twelve minutes of unique bogus kids, refilling and re-spending the
+    // speculative budget every window, and running past the verified TTL.
+    for (let window = 0; window < 12; window += 1) {
+      for (let i = 0; i < 30; i += 1) {
+        const bogus = await verifyPlaidWebhook({
+          header: makeToken({ body: BODY, kid: `flood-${window}-${i}` }),
+          rawBody: BODY,
+        });
+        expect(bogus).toEqual({ ok: false, error: "Unknown verification key" });
+      }
+      if (window < 11) await vi.advanceTimersByTimeAsync(61_000);
+    }
+
+    // No advance since the last burst: the speculative budget is spent right
+    // now, and the verified key is past its TTL so it needs a refresh.
+    expect(plaidVerifiedKeyCountForTests()).toBe(1);
+    const after = await verifyPlaidWebhook({ header: makeToken({ body: BODY }), rawBody: BODY });
+    expect(after.ok).toBe(true);
+
+    // One initial lookup plus exactly one refresh — never starved, never delayed
+    // into a rejection by the flood that ran alongside it.
+    expect(callsForKid(KID)).toBe(2);
+  });
+
+  it("stops verifying once Plaid reports the key retired on re-fetch", async () => {
+    vi.useFakeTimers();
+
+    const before = await verifyPlaidWebhook({ header: makeToken({ body: BODY }), rawBody: BODY });
+    expect(before.ok).toBe(true);
+
+    // Retired at Plaid AFTER it was cached: only a re-fetch can see this.
+    webhookVerificationKeyGet.mockResolvedValue({
+      data: { key: { ...jwk, expired_at: 1_700_000_000 } },
+    });
+
+    // Still inside the freshness bound — the cached copy is used, as designed.
+    await vi.advanceTimersByTimeAsync(PLAID_VERIFIED_KEY_TTL_MS - 1_000);
+    const stillCached = await verifyPlaidWebhook({
+      header: makeToken({ body: BODY }),
+      rawBody: BODY,
+    });
+    expect(stillCached.ok).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    const retired = await verifyPlaidWebhook({ header: makeToken({ body: BODY }), rawBody: BODY });
+    expect(retired).toEqual({ ok: false, error: "Verification key has expired" });
+    expect(callsForKid(KID)).toBe(2);
   });
 });

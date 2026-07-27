@@ -13,11 +13,13 @@
  *      algorithm the token names is the classic JWT confusion bug (`none`, or
  *      HS256 verified against the public key as an HMAC secret).
  *   2. The `kid` names a key fetched from `/webhook_verification_key/get`.
- *      Keys are looked up per `kid` and cached; Plaid rotates them. The `kid` is
- *      attacker-controlled and is read BEFORE anything is verified, so it is
- *      shape-checked first and both the cache and the outbound lookup rate are
- *      bounded — otherwise a flood of unique bogus kids would grow the cache
- *      without limit and amplify into Plaid's API.
+ *      The `kid` is attacker-controlled and is read BEFORE anything is verified,
+ *      so key storage is split in two: a VERIFIED store, which a key enters only
+ *      by carrying a webhook all the way through steps 1-5, and a small
+ *      SPECULATIVE cache for kids nobody has ever verified with. They have
+ *      separate size caps and separate outbound-lookup budgets, so a flood of
+ *      unique bogus kids can neither evict a real Plaid key nor starve its
+ *      refresh — it can only exhaust its own half.
  *   3. The signature is verified against that key.
  *   4. `iat` must be recent AND not meaningfully in the future, so the replay
  *      window is bounded on both sides.
@@ -100,77 +102,154 @@ function constantTimeEquals(a: string, b: string): boolean {
 }
 
 /**
- * Key cache. Plaid signs with one of a small rotating set of keys, so fetching
+ * Key storage. Plaid signs with one of a small rotating set of keys, so fetching
  * per request would add a round trip to every webhook and put the endpoint's
  * availability at the mercy of Plaid's own API latency.
  *
+ * There are two stores, because the two populations have nothing in common. A
+ * kid that has carried a webhook end to end is known-good and only a handful
+ * ever exist; a kid nobody has verified with is whatever the last caller typed.
+ * Mixing them means the second can evict and starve the first, which is exactly
+ * the availability hole this split exists to close.
+ *
+ * The verified TTL is short on purpose: `expired_at` is only ever read off a
+ * fetched JWK, so the TTL is also how long a key Plaid has since retired could
+ * keep verifying. Past it the key is RE-FETCHED, and the retirement is seen.
+ * The stale grace below applies only when that re-fetch itself fails — Plaid
+ * being unreachable must not take this endpoint down with it.
+ */
+const VERIFIED_KEY_TTL_MS = 10 * 60 * 1000;
+const VERIFIED_KEY_STALE_GRACE_MS = 60 * 60 * 1000;
+const SPECULATIVE_KEY_TTL_MS = 5 * 60 * 1000;
+
+/**
  * Failures get a short negative TTL of their own: without it, a flood of
  * requests bearing a bogus `kid` would turn into a flood of outbound calls.
  * That TTL is per-kid, so it only rate-limits repeats of the SAME kid; the
- * cache cap and the cross-kid lookup budget below are what bound a flood of
- * UNIQUE ones, which is the shape an unauthenticated caller actually controls.
+ * speculative cap and budget bound a flood of UNIQUE ones, which is the shape
+ * an unauthenticated caller actually controls.
  */
-const KEY_TTL_MS = 24 * 60 * 60 * 1000;
 const NEGATIVE_TTL_MS = 60 * 1000;
 
-/** Only a handful of real Plaid keys ever exist; anything past this is noise. */
-const MAX_CACHE_ENTRIES = 32;
+const MAX_VERIFIED_ENTRIES = 8;
+const MAX_SPECULATIVE_ENTRIES = 32;
 
-/** Cross-kid ceiling on outbound `/webhook_verification_key/get` calls. */
+/** Separate ceilings on outbound `/webhook_verification_key/get` calls. */
 const LOOKUP_WINDOW_MS = 60 * 1000;
-const MAX_LOOKUPS_PER_WINDOW = 20;
+const MAX_VERIFIED_LOOKUPS_PER_WINDOW = 20;
+const MAX_SPECULATIVE_LOOKUPS_PER_WINDOW = 20;
 
 interface CacheEntry {
   key: PlaidVerificationJwk | null;
   expiresAt: number;
 }
 
-const keyCache = new Map<string, CacheEntry>();
+const verifiedKeys = new Map<string, CacheEntry>();
+const speculativeKeys = new Map<string, CacheEntry>();
 
-let lookupWindowStart = 0;
-let lookupsInWindow = 0;
+let verifiedWindowStart = 0;
+let verifiedLookups = 0;
+let speculativeWindowStart = 0;
+let speculativeLookups = 0;
 
-/** Exported for tests; production code never needs to clear the cache. */
+/** Exported for tests; production code never needs to clear the stores. */
 export function clearPlaidKeyCacheForTests(): void {
-  keyCache.clear();
-  lookupWindowStart = 0;
-  lookupsInWindow = 0;
+  verifiedKeys.clear();
+  speculativeKeys.clear();
+  verifiedWindowStart = 0;
+  verifiedLookups = 0;
+  speculativeWindowStart = 0;
+  speculativeLookups = 0;
 }
 
-/** Exported for tests so the cache cap is assertable without internals. */
+/** Exported for tests so the caps are assertable without reaching into internals. */
 export function plaidKeyCacheSizeForTests(): number {
-  return keyCache.size;
+  return verifiedKeys.size + speculativeKeys.size;
+}
+
+export function plaidVerifiedKeyCountForTests(): number {
+  return verifiedKeys.size;
+}
+
+/** Exported for tests so the rotation window can be advanced past exactly. */
+export const PLAID_VERIFIED_KEY_TTL_MS = VERIFIED_KEY_TTL_MS;
+
+/** Insertion order is eviction order, and a re-set moves an entry to the back. */
+function touch(store: Map<string, CacheEntry>, kid: string, entry: CacheEntry): void {
+  store.delete(kid);
+  store.set(kid, entry);
+}
+
+function remember(
+  store: Map<string, CacheEntry>,
+  cap: number,
+  kid: string,
+  entry: CacheEntry
+): void {
+  const now = Date.now();
+  for (const [cachedKid, cached] of store) {
+    if (cached.expiresAt <= now) store.delete(cachedKid);
+  }
+  touch(store, kid, entry);
+  while (store.size > cap) {
+    const oldest = store.keys().next();
+    if (oldest.done) break;
+    store.delete(oldest.value);
+  }
+}
+
+function claimBudget(kind: "verified" | "speculative"): boolean {
+  const now = Date.now();
+  if (kind === "verified") {
+    if (now - verifiedWindowStart >= LOOKUP_WINDOW_MS) {
+      verifiedWindowStart = now;
+      verifiedLookups = 0;
+    }
+    if (verifiedLookups >= MAX_VERIFIED_LOOKUPS_PER_WINDOW) return false;
+    verifiedLookups += 1;
+    return true;
+  }
+  if (now - speculativeWindowStart >= LOOKUP_WINDOW_MS) {
+    speculativeWindowStart = now;
+    speculativeLookups = 0;
+  }
+  if (speculativeLookups >= MAX_SPECULATIVE_LOOKUPS_PER_WINDOW) return false;
+  speculativeLookups += 1;
+  return true;
+}
+
+async function lookupKey(kid: string): Promise<PlaidVerificationJwk | null> {
+  try {
+    const res = await plaidClient.webhookVerificationKeyGet({ key_id: kid });
+    const jwk = res.data.key as unknown as PlaidVerificationJwk | undefined;
+    if (jwk && jwk.kty && jwk.crv && jwk.x && jwk.y) return jwk;
+  } catch (err) {
+    console.error(`[plaid-webhook] verification key lookup failed for kid ${kid}:`, err);
+  }
+  return null;
 }
 
 /**
- * Insertion order is eviction order, and a re-set moves an entry to the back,
- * so the cap behaves as an LRU over a set that is only ever a few keys deep in
- * real use.
+ * Promotes a key into the verified store. Called ONLY after a webhook has
+ * passed signature, replay window and body hash — a lookup that merely returned
+ * a JWK proves nothing, since the caller chose the kid.
+ *
+ * A key already present keeps its original expiry rather than having it pushed
+ * forward, so the freshness bound stays absolute and a retired key cannot be
+ * kept alive by replaying tokens it signed while it was still current.
  */
-function rememberKey(kid: string, entry: CacheEntry): void {
-  const now = Date.now();
-  for (const [cachedKid, cached] of keyCache) {
-    if (cached.expiresAt <= now) keyCache.delete(cachedKid);
+function promoteVerifiedKey(kid: string, key: PlaidVerificationJwk): void {
+  if (!isPlausiblePlaidKid(kid)) return;
+  speculativeKeys.delete(kid);
+  const existing = verifiedKeys.get(kid);
+  if (existing) {
+    touch(verifiedKeys, kid, existing);
+    return;
   }
-  keyCache.delete(kid);
-  keyCache.set(kid, entry);
-  while (keyCache.size > MAX_CACHE_ENTRIES) {
-    const oldest = keyCache.keys().next();
-    if (oldest.done) break;
-    keyCache.delete(oldest.value);
-  }
-}
-
-/** False once the window's budget is spent, so the caller fails closed. */
-function claimLookupBudget(): boolean {
-  const now = Date.now();
-  if (now - lookupWindowStart >= LOOKUP_WINDOW_MS) {
-    lookupWindowStart = now;
-    lookupsInWindow = 0;
-  }
-  if (lookupsInWindow >= MAX_LOOKUPS_PER_WINDOW) return false;
-  lookupsInWindow += 1;
-  return true;
+  remember(verifiedKeys, MAX_VERIFIED_ENTRIES, kid, {
+    key,
+    expiresAt: Date.now() + VERIFIED_KEY_TTL_MS,
+  });
 }
 
 /**
@@ -181,31 +260,46 @@ function claimLookupBudget(): boolean {
 export const fetchPlaidVerificationKey: PlaidKeyFetcher = async (kid) => {
   if (!isPlausiblePlaidKid(kid)) return null;
 
-  const cached = keyCache.get(kid);
-  if (cached && cached.expiresAt > Date.now()) {
-    keyCache.delete(kid);
-    keyCache.set(kid, cached);
-    return cached.key;
-  }
-
-  if (!claimLookupBudget()) {
-    console.warn("[plaid-webhook] verification key lookup budget exhausted; rejecting");
+  const verified = verifiedKeys.get(kid);
+  if (verified) {
+    const now = Date.now();
+    if (verified.expiresAt > now) {
+      touch(verifiedKeys, kid, verified);
+      return verified.key;
+    }
+    if (claimBudget("verified")) {
+      const fresh = await lookupKey(kid);
+      if (fresh) {
+        // Note this stores whatever `expired_at` now says: a retirement that
+        // happened after the key was cached becomes visible right here.
+        touch(verifiedKeys, kid, { key: fresh, expiresAt: Date.now() + VERIFIED_KEY_TTL_MS });
+        return fresh;
+      }
+    }
+    if (now < verified.expiresAt + VERIFIED_KEY_STALE_GRACE_MS) {
+      console.warn(`[plaid-webhook] serving stale verified key ${kid}; refresh failed`);
+      touch(verifiedKeys, kid, verified);
+      return verified.key;
+    }
+    verifiedKeys.delete(kid);
     return null;
   }
 
-  let key: PlaidVerificationJwk | null = null;
-  try {
-    const res = await plaidClient.webhookVerificationKeyGet({ key_id: kid });
-    const jwk = res.data.key as unknown as PlaidVerificationJwk | undefined;
-    if (jwk && jwk.kty && jwk.crv && jwk.x && jwk.y) key = jwk;
-  } catch (err) {
-    console.error(`[plaid-webhook] verification key lookup failed for kid ${kid}:`, err);
-    key = null;
+  const cached = speculativeKeys.get(kid);
+  if (cached && cached.expiresAt > Date.now()) {
+    touch(speculativeKeys, kid, cached);
+    return cached.key;
   }
 
-  rememberKey(kid, {
+  if (!claimBudget("speculative")) {
+    console.warn("[plaid-webhook] speculative key lookup budget exhausted; rejecting");
+    return null;
+  }
+
+  const key = await lookupKey(kid);
+  remember(speculativeKeys, MAX_SPECULATIVE_ENTRIES, kid, {
     key,
-    expiresAt: Date.now() + (key ? KEY_TTL_MS : NEGATIVE_TTL_MS),
+    expiresAt: Date.now() + (key ? SPECULATIVE_KEY_TTL_MS : NEGATIVE_TTL_MS),
   });
   return key;
 };
@@ -299,6 +393,9 @@ export async function verifyPlaidWebhook(params: {
   if (!constantTimeEquals(claimedHash.toLowerCase(), actualHash)) {
     return { ok: false, error: "Body does not match token hash" };
   }
+
+  // Only here — a full pass is the only evidence this kid is really Plaid's.
+  promoteVerifiedKey(kid, jwk);
 
   return { ok: true, claims: { iat, request_body_sha256: claimedHash } };
 }
