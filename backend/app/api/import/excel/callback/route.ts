@@ -11,20 +11,23 @@ import { db } from "@/db";
 import { oauthStates } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { exchangeExcelCode } from "@/lib/import/excel";
+import { closePage } from "@/lib/close-page";
 
-function closePage(message: string): NextResponse {
-  return new NextResponse(
-    `<!doctype html><meta charset="utf-8"><title>Excel connected</title><body style="font-family:system-ui;padding:2rem">${message}<script>setTimeout(()=>window.close(),1500)</script></body>`,
-    { status: 200, headers: { "content-type": "text/html; charset=utf-8" } }
-  );
-}
+const TITLE = "Excel connected";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
   const state = searchParams.get("state");
   const oauthError = searchParams.get("error");
-  if (oauthError) return closePage(`Microsoft authorization was cancelled (${oauthError}).`);
+  // The provider's own error string is deliberately NOT reflected: it tells the
+  // user nothing they can act on, and reflecting attacker-controlled text into
+  // an unauthenticated text/html response on the session-cookie origin is how
+  // this route grew an XSS. The value is logged instead, where it is useful.
+  if (oauthError) {
+    console.warn("[import/excel/callback] Microsoft returned an OAuth error");
+    return closePage(TITLE, "Microsoft authorization was cancelled. You can close this window.");
+  }
   if (!code || !state) return NextResponse.json({ error: "Missing code or state" }, { status: 400 });
 
   const [row] = await db
@@ -41,5 +44,5 @@ export async function GET(req: NextRequest) {
 
   await exchangeExcelCode(row.userId, code);
 
-  return closePage("Excel connected. You can close this window.");
+  return closePage(TITLE, "Excel connected. You can close this window.");
 }

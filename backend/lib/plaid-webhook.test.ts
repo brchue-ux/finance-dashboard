@@ -1,0 +1,226 @@
+/**
+ * F2 regression — Plaid webhook signature verification.
+ *
+ * No Plaid credentials are needed or used: a P-256 key pair is generated here
+ * and handed to the verifier through its injectable `fetchKey` seam, so these
+ * tests exercise the real ES256 verification, the real body-hash binding and
+ * the real replay window against tokens this file signs itself.
+ */
+import { describe, it, expect, vi } from "vitest";
+import { createHash, generateKeyPairSync, sign as signWith } from "crypto";
+import { verifyPlaidWebhook, type PlaidVerificationJwk } from "./plaid-webhook";
+
+const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+const jwk = publicKey.export({ format: "jwk" }) as unknown as PlaidVerificationJwk;
+
+const KID = "test-kid";
+const fetchKey = vi.fn(async (kid: string) => (kid === KID ? jwk : null));
+
+function b64url(value: string | Buffer): string {
+  return Buffer.from(value).toString("base64url");
+}
+
+function sha256Hex(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+/**
+ * Builds a token the way Plaid does. `overrides` lets each test break exactly
+ * one property, so a failure names the property that stopped being checked.
+ */
+function makeToken(opts: {
+  body: string;
+  iat?: number;
+  kid?: string;
+  alg?: string;
+  bodyHash?: string;
+  tamperSignature?: boolean;
+  omitClaim?: "iat" | "request_body_sha256";
+}): string {
+  const header = { alg: opts.alg ?? "ES256", kid: opts.kid ?? KID, typ: "JWT" };
+  const payload: Record<string, unknown> = {
+    iat: opts.iat ?? Math.floor(Date.now() / 1000),
+    request_body_sha256: opts.bodyHash ?? sha256Hex(opts.body),
+  };
+  if (opts.omitClaim) delete payload[opts.omitClaim];
+
+  const signingInput = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(payload))}`;
+  const signature = signWith("sha256", Buffer.from(signingInput, "utf8"), {
+    key: privateKey,
+    dsaEncoding: "ieee-p1363",
+  });
+  if (opts.tamperSignature) signature[0] ^= 0xff;
+
+  return `${signingInput}.${b64url(signature)}`;
+}
+
+const BODY = JSON.stringify({
+  webhook_type: "TRANSACTIONS",
+  webhook_code: "ITEM_LOGIN_REQUIRED",
+  item_id: "item-123",
+});
+
+describe("verifyPlaidWebhook", () => {
+  it("accepts a correctly signed token whose hash matches the body", async () => {
+    const result = await verifyPlaidWebhook({
+      header: makeToken({ body: BODY }),
+      rawBody: BODY,
+      fetchKey,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects a missing Plaid-Verification header", async () => {
+    const result = await verifyPlaidWebhook({ header: null, rawBody: BODY, fetchKey });
+    expect(result).toEqual({ ok: false, error: "Missing Plaid-Verification header" });
+  });
+
+  it("rejects a token that is not three segments", async () => {
+    const result = await verifyPlaidWebhook({ header: "not.a-jwt", rawBody: BODY, fetchKey });
+    expect(result).toEqual({ ok: false, error: "Malformed Plaid-Verification token" });
+  });
+
+  it("rejects a tampered signature", async () => {
+    const result = await verifyPlaidWebhook({
+      header: makeToken({ body: BODY, tamperSignature: true }),
+      rawBody: BODY,
+      fetchKey,
+    });
+    expect(result).toEqual({ ok: false, error: "Invalid webhook signature" });
+  });
+
+  it("rejects a token signed by a different key", async () => {
+    const other = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+    const header = b64url(JSON.stringify({ alg: "ES256", kid: KID, typ: "JWT" }));
+    const payload = b64url(
+      JSON.stringify({ iat: Math.floor(Date.now() / 1000), request_body_sha256: sha256Hex(BODY) })
+    );
+    const sig = signWith("sha256", Buffer.from(`${header}.${payload}`, "utf8"), {
+      key: other.privateKey,
+      dsaEncoding: "ieee-p1363",
+    });
+
+    const result = await verifyPlaidWebhook({
+      header: `${header}.${payload}.${b64url(sig)}`,
+      rawBody: BODY,
+      fetchKey,
+    });
+    expect(result).toEqual({ ok: false, error: "Invalid webhook signature" });
+  });
+
+  it("rejects a body that does not match the request_body_sha256 claim", async () => {
+    // The exact replay this claim exists to stop: a genuine token, a swapped body.
+    const tamperedBody = JSON.stringify({
+      webhook_type: "TRANSACTIONS",
+      webhook_code: "ITEM_LOGIN_REQUIRED",
+      item_id: "someone-elses-item",
+    });
+    const result = await verifyPlaidWebhook({
+      header: makeToken({ body: BODY }),
+      rawBody: tamperedBody,
+      fetchKey,
+    });
+    expect(result).toEqual({ ok: false, error: "Body does not match token hash" });
+  });
+
+  it("rejects an unknown key id", async () => {
+    const result = await verifyPlaidWebhook({
+      header: makeToken({ body: BODY, kid: "no-such-kid" }),
+      rawBody: BODY,
+      fetchKey,
+    });
+    expect(result).toEqual({ ok: false, error: "Unknown verification key" });
+  });
+
+  it("rejects a token with no key id", async () => {
+    const header = b64url(JSON.stringify({ alg: "ES256", typ: "JWT" }));
+    const payload = b64url(JSON.stringify({ iat: 1, request_body_sha256: sha256Hex(BODY) }));
+    const result = await verifyPlaidWebhook({
+      header: `${header}.${payload}.${b64url("sig")}`,
+      rawBody: BODY,
+      fetchKey,
+    });
+    expect(result).toEqual({ ok: false, error: "Token has no key id" });
+  });
+
+  it("rejects alg: none — the algorithm is pinned, not read from the token", async () => {
+    const header = b64url(JSON.stringify({ alg: "none", kid: KID, typ: "JWT" }));
+    const payload = b64url(
+      JSON.stringify({ iat: Math.floor(Date.now() / 1000), request_body_sha256: sha256Hex(BODY) })
+    );
+    const result = await verifyPlaidWebhook({
+      header: `${header}.${payload}.`,
+      rawBody: BODY,
+      fetchKey,
+    });
+    expect(result).toEqual({ ok: false, error: "Unsupported token algorithm" });
+  });
+
+  it("rejects HS256 so the public key cannot be used as an HMAC secret", async () => {
+    const result = await verifyPlaidWebhook({
+      header: makeToken({ body: BODY, alg: "HS256" }),
+      rawBody: BODY,
+      fetchKey,
+    });
+    expect(result).toEqual({ ok: false, error: "Unsupported token algorithm" });
+  });
+
+  it("rejects a token older than the replay window", async () => {
+    const iat = Math.floor(Date.now() / 1000) - 600;
+    const result = await verifyPlaidWebhook({
+      header: makeToken({ body: BODY, iat }),
+      rawBody: BODY,
+      fetchKey,
+    });
+    expect(result).toEqual({ ok: false, error: "Token has expired" });
+  });
+
+  it("accepts a token inside the replay window", async () => {
+    const iat = Math.floor(Date.now() / 1000) - 60;
+    const result = await verifyPlaidWebhook({
+      header: makeToken({ body: BODY, iat }),
+      rawBody: BODY,
+      fetchKey,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects a token with no iat claim", async () => {
+    const result = await verifyPlaidWebhook({
+      header: makeToken({ body: BODY, omitClaim: "iat" }),
+      rawBody: BODY,
+      fetchKey,
+    });
+    expect(result).toEqual({ ok: false, error: "Token has no issued-at claim" });
+  });
+
+  it("rejects a token with no body-hash claim", async () => {
+    const result = await verifyPlaidWebhook({
+      header: makeToken({ body: BODY, omitClaim: "request_body_sha256" }),
+      rawBody: BODY,
+      fetchKey,
+    });
+    expect(result).toEqual({ ok: false, error: "Token has no body hash claim" });
+  });
+
+  it("rejects a rotated-out key even when the signature checks", async () => {
+    const expiredKeyFetcher = async () => ({ ...jwk, expired_at: 1_700_000_000 });
+    const result = await verifyPlaidWebhook({
+      header: makeToken({ body: BODY }),
+      rawBody: BODY,
+      fetchKey: expiredKeyFetcher,
+    });
+    expect(result).toEqual({ ok: false, error: "Verification key has expired" });
+  });
+
+  it("binds to the exact bytes received, not to equivalent JSON", async () => {
+    // Re-serializing the body before hashing would make this pass — it must not.
+    const reserialized = JSON.stringify(JSON.parse(BODY), null, 2);
+    const result = await verifyPlaidWebhook({
+      header: makeToken({ body: BODY }),
+      rawBody: reserialized,
+      fetchKey,
+    });
+    expect(result).toEqual({ ok: false, error: "Body does not match token hash" });
+  });
+});

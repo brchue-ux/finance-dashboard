@@ -14,18 +14,39 @@ import { db } from "@/db";
 import { budgetEnvelopes, envelopeAllocations } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { planReallocation } from "@/lib/budget/reallocate";
+import { coerceInteger, readJsonObject } from "@/lib/request-body";
+
+/**
+ * envelope_allocations is keyed by (envelope, year, month), so an out-of-range
+ * year creates a per-month override for a month that cannot be viewed or
+ * corrected. Bounded rather than merely integer-checked.
+ */
+const MIN_YEAR = 1970;
+const MAX_YEAR = 9999;
 
 export async function POST(req: NextRequest) {
   const authed = await requireUser(req);
   if ("response" in authed) return authed.response;
 
   const userId = authed.userId;
-  const body = await req.json().catch(() => null);
+  const body = await readJsonObject(req);
+  if (!body) {
+    return NextResponse.json({ error: "Body must be a JSON object" }, { status: 400 });
+  }
 
   const now = new Date();
-  const year = Number(body?.year ?? now.getFullYear());
-  const month = Number(body?.month ?? now.getMonth() + 1);
-  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+  // `Number(body.year)` was the previous coercion, and `Number([])` is 0 — so
+  // {"year": []} wrote an allocation row for year 0 and returned 200.
+  const year = body.year == null ? now.getFullYear() : coerceInteger(body.year);
+  const month = body.month == null ? now.getMonth() + 1 : coerceInteger(body.month);
+  if (
+    year === null ||
+    month === null ||
+    year < MIN_YEAR ||
+    year > MAX_YEAR ||
+    month < 1 ||
+    month > 12
+  ) {
     return NextResponse.json({ error: "year and month must be a valid month" }, { status: 400 });
   }
 
@@ -58,9 +79,9 @@ export async function POST(req: NextRequest) {
   const result = planReallocation({
     envelopes,
     allocations,
-    fromName: body?.envelope_from,
-    toName: body?.envelope_to,
-    amount: body?.amount,
+    fromName: body.envelope_from,
+    toName: body.envelope_to,
+    amount: body.amount,
   });
 
   if (!result.ok) {
