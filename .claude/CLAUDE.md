@@ -29,7 +29,9 @@ Backend is **deployed as a systemd user service** (`wayfinder-backend`, port 301
 build — code changes no longer hot-reload, ship via `npm run build && systemctl --user restart
 wayfinder-backend`), reachable at `https://homeserver.tail25a02d.ts.net:7443` via tailscale serve.
 `build-reminders.md` items 1–9 are done; item 10 (realistic seed) done; item 5 (region/currency)
-deferred. 321 tests passing (290 backend + 31 frontend); root `npm test` now runs both workspaces.
+deferred. Root `npm test` now runs **both** workspaces (`backend` and `frontend`). No test count is
+recorded here on purpose — the hand-maintained one drifted twice (this file claimed 277 while the
+suite was at 282); run the command for the current number.
 
 **Expo web is a supported target** — browser sign-in and all nine gradient-title screens verified.
 Its sharp edges (origin trust, the `*.web.tsx` platform split) live in the root `AGENTS.md`.
