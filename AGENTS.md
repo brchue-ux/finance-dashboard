@@ -18,8 +18,9 @@ target (`file:./scratch-test.db`), seed it with `db/seed-test.ts`, and confirm a
 the primary checkout's `backend/local.db` is byte-identical (`md5sum`) with no `-wal`/`-shm`
 sibling. This is the concrete form of the mandatory protocol in `.claude/CLAUDE.md`.
 
-Telling the two apart at runtime: the test seed is ~379 transactions with `[TEST]`-marked account
-names and login `demo@test.local`; the real database is ~3,920 transactions across 8 accounts.
+Telling the two apart at runtime: test-seed account names carry a `[TEST]` marker; the real
+database is the multi-thousand-transaction one across 8 named real accounts. Row counts, logins
+and env-file wiring for both live in the dev-server bullet of `.claude/CLAUDE.md`.
 
 ## Route handlers are unit-testable — `vitest.config.ts` already includes `app/**/*.test.ts`
 
