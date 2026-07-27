@@ -5,6 +5,7 @@ import { useAlerts } from "@/hooks/useAlerts";
 import { useBudget } from "@/hooks/useBudget";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { useSession } from "@/lib/auth";
+import { connectionNeedsAction } from "@/lib/connection-status";
 
 function AlertsBadge() {
   const { data } = useAlerts();
@@ -42,12 +43,10 @@ function ConnectionAlertBadge() {
   const { data: budget } = useBudget(now.getFullYear(), now.getMonth() + 1);
   const { data: portfolio } = usePortfolio();
 
-  const bankNeedsAttention = (budget?.bankConnections ?? []).some(
-    (c) => c.status === "relink_required" || c.status === "reconnect_required"
+  const bankNeedsAttention = (budget?.bankConnections ?? []).some((c) =>
+    connectionNeedsAction(c.status)
   );
-  const brokerageNeedsAttention =
-    portfolio?.connection?.status === "reconnect_required" ||
-    portfolio?.connection?.status === "relink_required";
+  const brokerageNeedsAttention = connectionNeedsAction(portfolio?.connection?.status);
 
   if (!bankNeedsAttention && !brokerageNeedsAttention) return null;
 
