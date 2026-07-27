@@ -7,13 +7,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth-guard";
 import { exchangeGoogleCode } from "@/lib/import/google";
+import { closePage } from "@/lib/close-page";
+import { sanitizeForLog } from "@/lib/log-safe";
 
-function closePage(message: string): NextResponse {
-  return new NextResponse(
-    `<!doctype html><meta charset="utf-8"><title>Google connected</title><body style="font-family:system-ui;padding:2rem">${message}<script>setTimeout(()=>window.close(),1500)</script></body>`,
-    { status: 200, headers: { "content-type": "text/html; charset=utf-8" } }
-  );
-}
+const TITLE = "Google connected";
 
 export async function GET(req: NextRequest) {
   const authed = await requireUser(req);
@@ -23,7 +20,15 @@ export async function GET(req: NextRequest) {
   const code = searchParams.get("code");
   const state = searchParams.get("state");
   const oauthError = searchParams.get("error");
-  if (oauthError) return closePage(`Google authorization was cancelled (${oauthError}).`);
+  // Never reflected — see the note in the Excel callback. The provider's error
+  // string is attacker-controllable and useless to the user; it goes to the
+  // server log only, sanitized.
+  if (oauthError) {
+    console.warn(
+      `[import/google/callback] Google returned an OAuth error: ${sanitizeForLog(oauthError)}`
+    );
+    return closePage(TITLE, "Google authorization was cancelled. You can close this window.");
+  }
   if (!code || !state) return NextResponse.json({ error: "Missing code or state" }, { status: 400 });
 
   const expectedState = req.cookies.get("g_oauth_state")?.value;
@@ -33,7 +38,7 @@ export async function GET(req: NextRequest) {
 
   await exchangeGoogleCode(authed.userId, code);
 
-  const res = closePage("Google Sheets connected. You can close this window.");
+  const res = closePage(TITLE, "Google Sheets connected. You can close this window.");
   res.cookies.delete("g_oauth_state");
   return res;
 }

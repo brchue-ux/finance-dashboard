@@ -10,9 +10,10 @@ export default defineConfig({
     // (The coupling is a design smell worth unpicking later; this keeps the
     // suite honest without refactoring working code to make it testable.)
     env: { DATABASE_URL: "file::memory:" },
-    // Pure-logic suites only. Anything touching the DB, Plaid, or Anthropic is
-    // deliberately out of scope here — those are verified against the running
-    // server and the test database instead.
+    // Pure logic plus route handlers, which are imported directly with their
+    // collaborators stubbed (see AGENTS.md). Nothing here opens a real DB,
+    // Plaid, or Anthropic connection — those paths are exercised through
+    // injectable seams, or verified against the running server instead.
     include: ["lib/**/*.test.ts", "app/**/*.test.ts"],
   },
   resolve: {

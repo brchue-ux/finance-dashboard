@@ -74,6 +74,44 @@ Reports disagreeing on "Spent") was explicitly left out of scope as an open prod
 
 All work ran against a disposable scratch DB; the real `local.db` was md5-verified untouched.
 
+## ⇒ SECURITY + INPUT-VALIDATION PASS — 2026-07-27 (branch `fm/budget-sec`)
+
+Acting on an external code review of `3612300`. All three defects were reproduced live against a
+scratch DB first, then re-run after the fix; the real `local.db` was never a target (its md5 and
+mtime were verified unchanged afterwards).
+
+- **Reflected XSS in both OAuth callbacks (HIGH).** `?error=<script>…` was interpolated verbatim
+  into a `text/html` 200 on the session-cookie origin, unauthenticated — same-origin script with
+  `credentials:"include"` reach over the whole financial API, and the host is internet-reachable
+  via tailscale serve. The provider's error string is no longer reflected at all (logged instead),
+  and escaping now lives inside a shared `lib/close-page.ts` so a future caller can't reintroduce it.
+- **Plaid webhook accepted unauthenticated writes (HIGH).** One `curl` flipped a connection to
+  `relink_required`; the `Plaid-Verification` header was never read. Now verified per Plaid's
+  documented flow in `lib/plaid-webhook.ts` before anything is read out of the body: ES256 pinned
+  (not read from the token), key fetched by `kid` from `/webhook_verification_key/get`, `iat`
+  bounded to a symmetric replay window (5 min old / 60s future-dated), and the body SHA-256 checked
+  against `request_body_sha256` — the last step is what binds a genuine token to *this* payload.
+  `item_id` must also match a real connection (404 otherwise). Rejections are 401. Because the
+  `kid` is attacker-chosen and consulted *before* verification, the key cache is not a single map:
+  the shape is validated first, and verified vs never-yet-verified kids live in separate bounded
+  stores with separate outbound-lookup budgets so the latter cannot evict or starve the former.
+  The constants and the reasoning behind each are documented at their definitions in that file.
+- **`/api/llm/analyze` 500'd on every client mistake (MEDIUM).** `view` was cast `as CardView`,
+  never validated, then used as half of `llm_analysis_cache`'s unique index. Now a zod enum → 400;
+  cold-start generation failure → 503 `ANALYSIS_UNAVAILABLE`, matching the import routes' convention.
+- **Money-write routes.** The review's claim that these 500 on a malformed body did NOT reproduce —
+  all three already had `.catch(() => null)` and delegate to validators that accept `unknown`. But
+  probing found a real hole: `POST /api/budget/allocations/reallocate` with `{"year": []}` returned
+  200 and wrote allocation rows for **year 0**, because `Number([])` is 0 and passes
+  `Number.isInteger`. `lib/request-body.ts` now gates body shape and integer coercion; year is bounded.
+- **`snaptrade-typescript-sdk` 10.0.18 → 11.0.1**, dropping a transitively pinned axios 1.16.1
+  (10 advisories, all `< 1.18.0`, unfixable by `npm audit fix`). v11's only breaking change reaching
+  this codebase is the constructor (`auth: SnaptradeAuth.commercialApiKey({…})`); every call site is
+  unchanged and portfolio flows were re-verified live.
+
+Tests 282 → 359, including the first route tests in the repo (`vitest.config.ts` already allowed
+`app/**/*.test.ts`; nothing had used it). Both workspaces typecheck and build.
+
 ## ⇒ START HERE — Finance Dashboard current state (2026-07-21, latest session)
 
 **Phase: `build-reminders.md` item 6 — COMPLETE (6a/6b/6c/6d), device-confirmed by user + PUSHED (`faff7f3`, 2026-07-22).**

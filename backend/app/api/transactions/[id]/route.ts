@@ -18,6 +18,7 @@ import { budgetEnvelopes, transactionSplits, transactions } from "@/db/schema";
 import { ownedTransaction } from "@/lib/transaction-access";
 import { resolveCategoryAssignment } from "@/lib/budget/category-assignment";
 import { recordCategorizationEvent } from "@/lib/budget/categorization-events";
+import { readJsonObject } from "@/lib/request-body";
 import { and, eq } from "drizzle-orm";
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -25,7 +26,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const found = await ownedTransaction(req, id);
   if ("response" in found) return found.response;
 
-  const body = await req.json().catch(() => null);
+  // Answered before the split check so a malformed body is reported as one,
+  // not as "category must be a string".
+  const body = await readJsonObject(req);
+  if (!body) {
+    return NextResponse.json({ error: "Body must be a JSON object" }, { status: 400 });
+  }
 
   // A split transaction is replaced entirely by its splits in every budget
   // total (lib/budget/summarize.ts). Setting the parent's category would
@@ -54,7 +60,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     .from(budgetEnvelopes)
     .where(and(eq(budgetEnvelopes.userId, found.userId), eq(budgetEnvelopes.active, 1)));
 
-  const resolved = resolveCategoryAssignment(body?.category, envelopes);
+  const resolved = resolveCategoryAssignment(body.category, envelopes);
   if (!resolved.ok) {
     return NextResponse.json({ error: resolved.error }, { status: 400 });
   }

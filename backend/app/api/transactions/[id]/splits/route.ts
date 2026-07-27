@@ -13,6 +13,7 @@ import { db } from "@/db";
 import { transactionSplits } from "@/db/schema";
 import { validateSplits } from "@/lib/budget/splits";
 import { ownedTransaction } from "@/lib/transaction-access";
+import { readJsonObject } from "@/lib/request-body";
 import { eq } from "drizzle-orm";
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -41,8 +42,14 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
   const found = await ownedTransaction(req, id);
   if ("response" in found) return found.response;
 
-  const body = await req.json().catch(() => null);
-  const validation = validateSplits(found.row.amount, body?.splits);
+  // A malformed body is answered as such, rather than falling through to
+  // validateSplits and reporting it as "splits must be a non-empty array".
+  const body = await readJsonObject(req);
+  if (!body) {
+    return NextResponse.json({ error: "Body must be a JSON object" }, { status: 400 });
+  }
+
+  const validation = validateSplits(found.row.amount, body.splits);
   if (!validation.ok) {
     return NextResponse.json({ error: validation.error }, { status: 400 });
   }
