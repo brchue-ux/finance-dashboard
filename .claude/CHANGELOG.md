@@ -41,10 +41,14 @@ mtime were verified unchanged afterwards).
 - **Plaid webhook accepted unauthenticated writes (HIGH).** One `curl` flipped a connection to
   `relink_required`; the `Plaid-Verification` header was never read. Now verified per Plaid's
   documented flow in `lib/plaid-webhook.ts` before anything is read out of the body: ES256 pinned
-  (not read from the token), key fetched by `kid` from `/webhook_verification_key/get` and cached
-  24h (60s negative TTL), `iat` bounded to 5 min, and the body SHA-256 checked against
-  `request_body_sha256` — the last step is what binds a genuine token to *this* payload. `item_id`
-  must also match a real connection (404 otherwise). Rejections are 401.
+  (not read from the token), key fetched by `kid` from `/webhook_verification_key/get`, `iat`
+  bounded to a symmetric replay window (5 min old / 60s future-dated), and the body SHA-256 checked
+  against `request_body_sha256` — the last step is what binds a genuine token to *this* payload.
+  `item_id` must also match a real connection (404 otherwise). Rejections are 401. Because the
+  `kid` is attacker-chosen and consulted *before* verification, the key cache is not a single map:
+  the shape is validated first, and verified vs never-yet-verified kids live in separate bounded
+  stores with separate outbound-lookup budgets so the latter cannot evict or starve the former.
+  The constants and the reasoning behind each are documented at their definitions in that file.
 - **`/api/llm/analyze` 500'd on every client mistake (MEDIUM).** `view` was cast `as CardView`,
   never validated, then used as half of `llm_analysis_cache`'s unique index. Now a zod enum → 400;
   cold-start generation failure → 503 `ANALYSIS_UNAVAILABLE`, matching the import routes' convention.
@@ -58,7 +62,7 @@ mtime were verified unchanged afterwards).
   this codebase is the constructor (`auth: SnaptradeAuth.commercialApiKey({…})`); every call site is
   unchanged and portfolio flows were re-verified live.
 
-Tests 282 → 337, including the first route tests in the repo (`vitest.config.ts` already allowed
+Tests 282 → 359, including the first route tests in the repo (`vitest.config.ts` already allowed
 `app/**/*.test.ts`; nothing had used it). Both workspaces typecheck and build.
 
 ## ⇒ START HERE — Finance Dashboard current state (2026-07-21, latest session)

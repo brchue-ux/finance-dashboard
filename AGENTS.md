@@ -19,8 +19,9 @@ the primary checkout's `backend/local.db` is byte-identical (`md5sum`) with no `
 sibling. This is the concrete form of the mandatory protocol in `.claude/CLAUDE.md`.
 
 Telling the two apart at runtime: test-seed account names carry a `[TEST]` marker; the real
-database is the multi-thousand-transaction one across 8 named real accounts. Row counts, logins
-and env-file wiring for both live in the dev-server bullet of `.claude/CLAUDE.md`.
+database is the multi-thousand-transaction one across 8 named real accounts. Logins and env-file
+wiring for both live in the dev-server bullet of `.claude/CLAUDE.md`; the test seed's own row
+count is whatever `db/seed-test.ts` reports when you run it.
 
 ## Route handlers are unit-testable — `vitest.config.ts` already includes `app/**/*.test.ts`
 
