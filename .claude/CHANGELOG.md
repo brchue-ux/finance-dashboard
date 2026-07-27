@@ -26,6 +26,40 @@ Two silent-data-loss incidents happened in ONE night against the REAL database. 
 - **Budget tab, one approved wording change only:** "% of this month's spending" → "% of this month's outflow" (`frontend/app/(tabs)/index.tsx`). The rest of that notice was explicitly out of scope.
 - **Regression tests (`backend/lib/budget/summarize.test.ts`, 4 added):** deliberately at backend pure-logic level — the frontend workspace has NO test runner at all (no jest/vitest, no test files, no test script) and root `npm test` runs backend only. They pin the property, not the implementation: the ledger identity, that `income − totalSpent` overstates by the uncategorized spend, that a transfer is in neither figure, and that `totalOutflow` doesn't move when only categorization changes while `totalSpent` does. Verified able to fail by mutating `totalOutflow` to be envelope-only. **Accepted gap:** they do NOT catch a client picking the wrong field, which is the literal regression that happened — frontend test infrastructure is recommended as separate work.
 - Investigation touched read-only copies of the DBs only; no product data mutated. **Frontend change NOT device-verified.**
+## 2026-07-27 — Expo web target fixes + first frontend test runner (`966f3c1`)
+
+Closed the web-target and UI findings of a prior code review (F3, F4, F7, F8, F9, C4). F5 (Budget vs
+Reports disagreeing on "Spent") was explicitly left out of scope as an open product decision, and
+`backend/app/api/` was left to a concurrent security worker.
+
+- **F3 — web sign-in 403.** `backend/lib/web-origins.ts` trusted `:8081`/`:19006` while Metro binds
+  `:8082`, so Better Auth returned `403 INVALID_ORIGIN` even though the CORS preflight passed.
+  `backend/lib/web-origins.test.ts` now *parses* the port out of `frontend/package.json`'s start
+  script rather than hardcoding it, so the duplication can't just move one file over.
+- **F4 — black screen titles on web.** `@react-native-masked-view` has no real web implementation
+  (its `.web.js` renders the mask and discards the children). Fixed at both layers: an explicit
+  fallback colour on the mask text, plus a real `GradientText.web.tsx` (`background-image` +
+  `background-clip: text` + transparent colour) following the `ChartView.web.tsx` platform split.
+  Nine affected screens verified in a real browser. The review's claim that Reports was affected was
+  wrong — `app/reports.tsx` uses a plain `Text`.
+- **F7 — raw `relink_required` enum shown to the user** on System status. The Banks mapping moved to
+  the shared `frontend/lib/connection-status.ts`; Banks' pill strings stay byte-identical (already
+  device-verified), System status gets the roomier "Relink needed" prose. Same bug in the
+  wealthsimple branch fixed too.
+- **F8** — "Last run never run" → "Never run" / "Last run <status>".
+- **F9** — clipped "✓ current" marker in the category picker: `flexShrink: 0` on the marker,
+  `flex: 1`/`minWidth: 0` on the label, and a right gutter so the last glyph clears the web scrollbar.
+- **C4** — 19 tests for `frontend/lib/csv-signs.ts`, the guard against this project's most expensive
+  bug (a debit-positive CSV importing 50 purchases as income). One test deliberately *characterises*
+  a known `splitCsvLine` wart (it strips a legitimate trailing quote) rather than fixing it — harmless
+  here and out of scope. Required a frontend runner: `frontend/vitest.config.ts` (pure, RN-free,
+  mirroring backend's) and root `npm test` now runs both workspaces. 286 backend + 19 frontend pass.
+- **`AGENTS.md` + root `CLAUDE.md` symlink added**, recording three sharp edges: the primary
+  checkout's absolute `DATABASE_URL`, the shared Metro cache resolving `node_modules` against the
+  wrong worktree, and the web-origins ↔ `package.json` coupling. `build:web` deliberately does NOT
+  get `--clear` (it would slow every build) — documented there instead.
+
+All work ran against a disposable scratch DB; the real `local.db` was md5-verified untouched.
 
 ## ⇒ START HERE — Finance Dashboard current state (2026-07-21, latest session)
 
