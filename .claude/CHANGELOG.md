@@ -20,6 +20,29 @@ Two silent-data-loss incidents happened in ONE night against the REAL database. 
 2. **Direct-sqlite3 writes made near a server kill can vanish with the WAL.** Two deletes verified at the time ("remaining: 0") silently resurrected after the dev→prod server swap — the WAL holding them died with the killed process. **Protocol: direct DB surgery only against a STABLE server (not one about to be killed/swapped); `PRAGMA wal_checkpoint(TRUNCATE)` after writing; re-verify through the RUNNING SERVER'S API, not just a fresh sqlite3 read. Any verification done before a process transition (kill, restart, migration, swap) is STALE — re-verify after.**
 3. Corollary already proven twice: a probe that "can't happen" (a dedup reporting duplicates of deleted rows) is evidence, not noise — chase it before building on top.
 
+## 2026-07-27 — First CI workflow (`fm/budget-ci`)
+
+- **`.github/workflows/ci.yml` — the repo's first GitHub Actions workflow.** Runs on
+  `pull_request` and on push to `main`: checkout → `actions/setup-node` v22 with `cache: 'npm'`
+  → `npm ci` at the workspace root → backend tests → frontend tests → typecheck both workspaces
+  → build both workspaces. Deliberately one small readable file; no deployment, schedules,
+  notifications, matrix builds, coverage upload, or third-party actions beyond checkout/setup-node.
+- **No repository secrets, no real database, no external service.** Both test suites and both
+  typechecks need zero configuration from a clean clone. The backend *build* needs exactly one
+  thing: `backend/db/index.ts` constructs its libsql client at module import time, so `next build`
+  dies collecting page data with `URL_INVALID` if `DATABASE_URL` is unset. The workflow passes
+  `DATABASE_URL: 'file::memory:'` inline — an in-RAM throwaway, no file written. It is an inline
+  literal ON PURPOSE and must not be moved to a secret.
+- **`permissions: contents: read`** pinned on the workflow.
+- **Neither workspace had a `typecheck` script**, so `tsc --noEmit` was added to
+  `backend/package.json` and `frontend/package.json`, plus a root script running both. That, plus
+  `AGENTS.md`, is the only change outside `.github/`.
+- **Two project sharp edges checked, not assumed** (recorded in `AGENTS.md`'s CI section): the
+  backend build script's 6GB `NODE_OPTIONS` heap is a *ceiling*, not a requirement — the build
+  peaks around 2.5GB RSS, well inside a standard runner; and the documented Metro `--clear` trap
+  does not apply on CI, because it comes from a cache shared across local worktrees and a runner
+  starts with an empty one. So `build:frontend` is invoked as-is.
+
 ## 2026-07-27 — Reports "Spent" restored to total outflow (`fm/budget-spent`)
 
 - **The contradiction:** Budget showed `summary.totalOutflow` under "Spent", the Reports monthly drill-down showed `summary.totalSpent` (envelope-attributed spend only). Traced both end to end against real rows: `totalIncome − totalOutflow` equals the net movement of every tracked account to the cent on seed AND real data; `totalSpent` misses by exactly `unattributedSpent` every month (real data ≈ $3,494/month, 31–41% of outflow). Transfers, refunds and splits are handled identically by both, so they do not distinguish the two. Same class as `00f13dd`, which fixed it on the Budget tab; Reports was written later and reached for the figure that had just been removed.
