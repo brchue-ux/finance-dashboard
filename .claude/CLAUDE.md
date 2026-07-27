@@ -81,7 +81,8 @@ Full detail, every commit hash, and every fixed bug for the above: `.claude/CHAN
 - **Metro is ALWAYS port 8082** (8081 = home-automation orchestrator, permanent — don't rediscover this).
 - Device reaches the API via `frontend/.env.local` → `EXPO_PUBLIC_API_URL=http://192.168.68.62:3011` (gitignored, recreate if missing; env only reloads on `expo start` restart).
 - Backend dev: `next dev --port 3011` with `--env-file=.env.local --env-file=.env.test` → serves **test.db** (seeded by `db/seed-test.ts` — that script's own output is the transaction count, don't hardcode one here; login `demo@test.local`/`test1234`). Without `--env-file=.env.test`, serves **local.db** (the real 3,920-txn data; device login `dev@example.com`, password in `~/.secrets/finance-dashboard-local-dev-seed.txt`). Switching back to real data needs a sign-out/in — the 30-day signed cookie cache survives the swap.
-- Production: systemd user service `wayfinder-backend` on 3011, real data, linger enabled. Build needs 6GB heap; an OOM leaves a partial standalone build that 404s.
+- Production: systemd user service `wayfinder-backend` on 3011, real data, linger enabled. An OOM leaves a partial standalone build that 404s — but the build script's 6GB
+  heap is a ceiling, not a requirement (see the CI section of `AGENTS.md`).
 - Repo: `~/projects/home_budget_app` (Linux homeserver) ⇄ GitHub `brchue-ux/finance-dashboard` (private). npm workspaces monorepo (`backend`, `frontend`).
 - **USER TODO still open:** add the tailscale https redirect URI to Entra app `b2d0ac8c` or new OneDrive consents fail.
 
