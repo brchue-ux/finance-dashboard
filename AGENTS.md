@@ -50,6 +50,21 @@ touched it — check whether any server of yours was running at that mtime befor
   script names an explicit `--port` **and** that each port is trusted. Add an expo script without a
   port, or on a new port, and it fails until `DEV_ORIGINS` agrees — do not hardcode a port there.
 
+## CI — `.github/workflows/ci.yml`
+
+Every PR runs both test suites, `npm run typecheck`, and both builds on a clean `npm ci`. Two
+facts that make it work and are not obvious from the scripts:
+
+- **`next build` needs a `DATABASE_URL` to exist.** `db/index.ts` builds its libsql client at
+  import time, so page-data collection dies with `URL_INVALID: 'undefined'` if it is unset. CI
+  passes `file::memory:` — no file, no real data. Every other integration credential is genuinely
+  optional at build time; the build needs no secrets at all.
+- **The `--clear` Metro trap does not apply on a runner.** That trap is a *shared* cache across
+  local worktrees; a CI checkout starts with an empty cache, so `build:frontend` is safe as-is.
+
+The 6GB heap in `backend`'s build script is a ceiling, not a requirement — the build peaks near
+2.5GB RSS, well inside a standard runner.
+
 ## Route handlers are unit-testable — `vitest.config.ts` already includes `app/**/*.test.ts`
 
 The suite was pure-logic-only for a long time, which reads as "routes can't be tested here". They

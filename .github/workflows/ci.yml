@@ -1,0 +1,62 @@
+# Continuous integration: runs the whole check suite on every pull request,
+# and again on the default branch after a merge.
+#
+# Everything here runs on GitHub's machines, so it deliberately uses NO
+# secrets and NO real services. The one environment variable it sets is a
+# throwaway in-memory database URL (see the backend build step). Nothing in
+# this file can reach a real database, bank connection, or API account.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 22 is what this repo is developed and run against. Next 15 and
+      # Expo 53 both require Node 20 or newer, so 22 (the current LTS line)
+      # is the version to track.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          # Caches the npm download cache, keyed off package-lock.json.
+          # This does NOT cache node_modules — `npm ci` still installs from
+          # scratch every run, which is what keeps stale dependencies from
+          # producing phantom type errors.
+          cache: 'npm'
+
+      # `npm ci` at the root installs both workspaces (backend + frontend)
+      # exactly as pinned in package-lock.json.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Backend tests
+        run: npm run test --workspace=backend
+
+      - name: Frontend tests
+        run: npm run test --workspace=frontend
+
+      - name: Typecheck (backend and frontend)
+        run: npm run typecheck
+
+      # `next build` imports every route, and the database module builds its
+      # client at import time — so the build needs SOME database URL to exist
+      # or it fails while collecting page data. `file::memory:` is a throwaway
+      # SQLite database that lives in RAM: no file is written, no real data is
+      # touched, and it is discarded when the step ends.
+      - name: Build backend
+        env:
+          DATABASE_URL: 'file::memory:'
+        run: npm run build:backend
+
+      # Exports the Expo web bundle. The runner is a fresh checkout with an
+      # empty Metro cache, so the `--clear` flag the local worktrees need is
+      # not required here.
+      - name: Build frontend (web)
+        run: npm run build:frontend
