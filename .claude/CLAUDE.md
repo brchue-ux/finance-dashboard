@@ -119,8 +119,8 @@ Full detail, every commit hash, and every fixed bug for the above: `.claude/CHAN
 ## Reference
 
 - `spec.md` (what to build) and `remediation-decisions-2026-07-18.md` (why) — both in `.claude/wayfinder/`.
-- `~/.claude/projects/C--Users-bchue/wayfinder/build-reminders.md` — deferred items that must surface at build time or post-launch. Check before starting a build session.
-- `~/.claude/projects/C--Users-bchue/wayfinder/handoff-2026-07-16.md` — prior handoff doc.
+- `.claude/wayfinder/build-reminders.md` — deferred items that must surface at build time or post-launch. Check before starting a build session.
+- `.claude/wayfinder/handoff-2026-07-16.md` — prior handoff doc.
 - Full build history, every commit, every fixed bug: `.claude/CHANGELOG.md`.
 
 ## Standing Preferences
@@ -128,5 +128,5 @@ Full detail, every commit hash, and every fixed bug for the above: `.claude/CHAN
 - Research standard: before any decision is locked, research must cover known bugs, scaling issues, runtime gotchas, hidden advantages, and prior art from publicly available projects. No shallow answers.
 - Research subagents run in parallel and are given full time to do deep dives.
 - Post-completion analysis: once all wayfinder tickets are resolved, conduct a full analysis of every completed ticket — reasoning applied, research methods used, gaps in coverage, opportunities missed. Mandatory final step before the spec is written.
-- Wayfinder tracker: local-markdown (no GitHub repo for this project). Map and tickets live in `~/.claude/projects/C--Users-bchue/wayfinder/`. Research findings in `wayfinder/research/`.
+- Wayfinder tracker: local-markdown (no GitHub repo for this project). Map and tickets live in `.claude/wayfinder/`. Research findings in `.claude/wayfinder/research/`.
 - Claude Code pinned at v2.1.81 — do not suggest updating (breaks Wispr Flow voice paste on Windows).
