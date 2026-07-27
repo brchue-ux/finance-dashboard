@@ -29,7 +29,7 @@ Backend is **deployed as a systemd user service** (`wayfinder-backend`, port 301
 build — code changes no longer hot-reload, ship via `npm run build && systemctl --user restart
 wayfinder-backend`), reachable at `https://homeserver.tail25a02d.ts.net:7443` via tailscale serve.
 `build-reminders.md` items 1–9 are done; item 10 (realistic seed) done; item 5 (region/currency)
-deferred. 277 tests passing.
+deferred.
 
 **Shipped and device-confirmed:** budget tab overhaul (4 group tiles → category cards → pace/trend
 detail), per-transaction recategorize + learning-rule loop, envelope proposal from the user's own
@@ -45,7 +45,8 @@ before it works from the phone.
 3 header icons + overall UI theme need a pass; the "Make this a rule?" proposal display/scope is
 unresolved (exploratory, user said "I don't know" — don't redesign unprompted).
 
-**Not yet device-verified:** scope chips, import-excel screen layout.
+**Not yet device-verified:** scope chips, import-excel screen layout, the Reports "Spent"
+headline + its "Not in any category" row.
 
 Full detail, every commit hash, and every fixed bug for the above: `.claude/CHANGELOG.md`.
 
@@ -54,6 +55,12 @@ Full detail, every commit hash, and every fixed bug for the above: `.claude/CHAN
 - **One-press nav rule (user, 2026-07-22):** anything the app surfaces or names that CAN be
   navigated to MUST ship with a clean one-press way to get there. Audit this on every new
   surfaced-item feature.
+- **A surface labelled "Spent" shows `summary.totalOutflow`, never `summary.totalSpent`.**
+  `totalSpent` counts only spend that reached an envelope, so it shrinks as categorization
+  coverage gets worse and misses the ledger by `unattributedSpent`; `totalOutflow` reconciles
+  (`totalIncome − totalOutflow` = actual account movement). If the surface also lists the
+  envelope rows, itemise the uncategorized remainder so the list still sums to the headline.
+  Pinned by the "canonical Spent" tests in `backend/lib/budget/summarize.test.ts`.
 - **Envelope sets can't be rigid or forced.** Cluster the user's OWN merchants and propose —
   never ship one household's taxonomy as a default.
 - **Never mark the frontend verified without an explicit user OK.** "User said commit/push" is
