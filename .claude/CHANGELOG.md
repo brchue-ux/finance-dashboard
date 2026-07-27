@@ -59,6 +59,18 @@ Reports disagreeing on "Spent") was explicitly left out of scope as an open prod
   wrong worktree, and the web-origins ↔ `package.json` coupling. `build:web` deliberately does NOT
   get `--clear` (it would slow every build) — documented there instead.
 
+- **Connection status unified onto one table — includes a DELIBERATE, user-visible colour change.**
+  `frontend/lib/connection-status.ts` is now the single owner of connection-status label, pill,
+  colour and the needs-action predicate, read by all four surfaces: Banks tab, Settings, System
+  status, and the tab-bar alert badge (`app/(tabs)/_layout.tsx`). Consequence to be aware of: the
+  "Live" dot/label on **Settings and System status** moved from `COLORS.success` (#22C55E) to
+  `COLORS.moneyIn` (#34D399), the Banks hue the table was seeded from. **This is intended, not a
+  refactor side effect** — `constants/theme.ts` documents #34D399 as "a mint softer than `success`"
+  because #22C55E "reads as an alarm-green at list density". Before this, Settings rendered a green
+  "● Live" for *any* non-`relink_required` bank, so a `reconnect_required` connection read as
+  healthy. The broader UI theme pass remains DEFERRED and untouched; only the connection-status hue
+  changed.
+
 All work ran against a disposable scratch DB; the real `local.db` was md5-verified untouched.
 
 ## ⇒ START HERE — Finance Dashboard current state (2026-07-21, latest session)
