@@ -13,9 +13,17 @@
  * a web-origin problem.
  */
 
-/** Local Expo web dev servers. Never trusted in production. */
+/**
+ * Local Expo web dev servers. Never trusted in production.
+ *
+ * This list has to track `frontend/package.json`'s start script: Metro binds
+ * the port that script names, so a port missing here is a 403 INVALID_ORIGIN
+ * on every web sign-in. `web-origins.test.ts` parses that script and asserts
+ * its port appears below, so the two can't drift again silently.
+ */
 const DEV_ORIGINS = [
-  "http://localhost:8081", // expo start (web)
+  "http://localhost:8081", // expo start (web), Metro's default
+  "http://localhost:8082", // expo start --port 8082 — what `npm start` actually binds
   "http://localhost:19006", // legacy expo web port
 ];
 

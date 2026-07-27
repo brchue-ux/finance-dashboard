@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { GradientText } from "@/components/ui/GradientText";
 import { COLORS } from "@/constants/theme";
+import { connectionStatusPill } from "@/lib/connection-status";
 import { useBanks, type BankAccount } from "@/hooks/useBanks";
 
 function timeAgo(ts: number | null): string {
@@ -29,21 +30,6 @@ function formatBalance(account: BankAccount): string {
   if (value == null) return "—";
   const currency = account.isoCurrencyCode && account.isoCurrencyCode !== "CAD" ? ` ${account.isoCurrencyCode}` : "";
   return `$${Math.abs(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${currency}`;
-}
-
-/** Connection-status pill content (spec §9: "● Live" / "⚠ Relink"). */
-function statusPill(status: string): { label: string; color: string } | null {
-  switch (status) {
-    case "active":
-      return { label: "● Live", color: COLORS.moneyIn };
-    case "relink_required":
-    case "reconnect_required":
-      return { label: "⚠ Relink", color: COLORS.warning };
-    case "manual":
-      return { label: "Manual", color: COLORS.textMuted };
-    default:
-      return null;
-  }
 }
 
 export default function BanksScreen() {
@@ -112,7 +98,7 @@ export default function BanksScreen() {
 
 function AccountCard({ account, onPress }: { account: BankAccount; onPress: () => void }) {
   const [revealed, setRevealed] = useState(false);
-  const pill = statusPill(account.connectionStatus);
+  const pill = connectionStatusPill(account.connectionStatus);
   const synced = account.connectionStatus === "manual" ? "Manual account" : `Synced ${timeAgo(account.lastSyncedAt)}`;
 
   return (

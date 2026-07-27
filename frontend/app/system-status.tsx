@@ -8,6 +8,7 @@ import { useRouter } from "expo-router";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientText } from "@/components/ui/GradientText";
 import { COLORS } from "@/constants/theme";
+import { connectionStatusLabel } from "@/lib/connection-status";
 import { useSystemStatus } from "@/hooks/useSystem";
 
 /** job_runs timestamps are unix seconds; connection timestamps are too. */
@@ -91,7 +92,7 @@ export default function SystemStatusScreen() {
                 <Row
                   key={b.institution}
                   label={b.institution}
-                  value={b.status === "active" ? "Live" : b.status}
+                  value={connectionStatusLabel(b.status)}
                   detail={`Last synced ${timeAgo(b.lastSyncedAt)}`}
                   color={statusColor(b.status)}
                 />
@@ -99,11 +100,7 @@ export default function SystemStatusScreen() {
               {data.connections.wealthsimple && (
                 <Row
                   label="Wealthsimple"
-                  value={
-                    data.connections.wealthsimple.status === "active"
-                      ? "Live"
-                      : data.connections.wealthsimple.status
-                  }
+                  value={connectionStatusLabel(data.connections.wealthsimple.status)}
                   detail={`Last synced ${timeAgo(data.connections.wealthsimple.lastSyncedAt)}`}
                   color={statusColor(data.connections.wealthsimple.status)}
                 />
@@ -135,7 +132,13 @@ export default function SystemStatusScreen() {
               <Row
                 label="Nightly analysis"
                 value={timeAgo(data.nightlyAnalysis.lastRunAt)}
-                detail={`Last run ${data.nightlyAnalysis.lastRunStatus ?? "never run"}`}
+                // "Last run never run" — the absent case is its own sentence,
+                // not a status word to slot into the prefix.
+                detail={
+                  data.nightlyAnalysis.lastRunStatus
+                    ? `Last run ${data.nightlyAnalysis.lastRunStatus}`
+                    : "Never run"
+                }
                 color={statusColor(data.nightlyAnalysis.lastRunStatus)}
               />
               {/* The self-serve nightly review: what each view produced, and
