@@ -424,3 +424,82 @@ describe("refund netting — positive rows classified as refunds", () => {
     expect(totals.saved).toBe(1000 - 335);
   });
 });
+
+/**
+ * Which figure a screen may label "Spent".
+ *
+ * This was decided once (2026-07-21, `00f13dd`) and applied to the Budget tab
+ * only; the Reports screen was written later and reached for `totalSpent`,
+ * reintroducing the same class on a second surface. These pin the property that
+ * makes the choice non-arbitrary, so a third surface has something to fail
+ * against rather than a convention to rediscover.
+ *
+ * `totalSpent` and `totalOutflow` are NOT interchangeable and the difference is
+ * not cosmetic: `totalOutflow` is the only one that reconciles to the ledger.
+ */
+describe("canonical Spent — totalOutflow is the figure that reconciles", () => {
+  // One month, hand-totalled so the expectations below are an independent
+  // check rather than a restatement of the code under test:
+  //   income   +2000
+  //   spending  −300 Groceries, −120 Restaurants, −75 uncategorized, −25 null
+  //   transfer  −500 (card payment; neither spending nor earning)
+  //   ledger net on the tracked accounts = 2000 − 520 = 1480
+  function month() {
+    return [
+      txn("Groceries", -300),
+      txn("Restaurants", -120),
+      txn("uncategorized", -75),
+      txn(null, -25),
+      txn(null, 2000),
+      { ...txn(null, -500), transferSource: "rule" },
+    ];
+  }
+  const LEDGER_NET = 1480;
+
+  it("totalIncome − totalOutflow is the month's actual account movement", () => {
+    const rows = month();
+    const summaries = summarizeEnvelopes([env("Groceries", 500), env("Restaurants", 300)], [], rows);
+    const t = summarizeTotals(summaries, rows);
+
+    expect(t.totalIncome - t.totalOutflow).toBe(LEDGER_NET);
+    expect(t.saved).toBe(LEDGER_NET);
+  });
+
+  it("totalIncome − totalSpent is NOT, and overstates by the uncategorized spend", () => {
+    // The failure mode in full: a surface using totalSpent reports a household
+    // $100 better off than its accounts actually were.
+    const rows = month();
+    const summaries = summarizeEnvelopes([env("Groceries", 500), env("Restaurants", 300)], [], rows);
+    const t = summarizeTotals(summaries, rows);
+
+    expect(t.totalIncome - t.totalSpent).toBe(LEDGER_NET + 100);
+    expect(t.unattributedSpent).toBe(100);
+  });
+
+  it("the transfer is in neither figure", () => {
+    const rows = month();
+    const summaries = summarizeEnvelopes([env("Groceries", 500), env("Restaurants", 300)], [], rows);
+    const t = summarizeTotals(summaries, rows);
+
+    expect(t.totalOutflow).toBe(520); // not 1020
+    expect(t.unattributedSpent).toBe(100); // the transfer did not land here either
+  });
+
+  it("totalOutflow does not move when only categorization changes; totalSpent does", () => {
+    // The same $520 left the account either way. Here an envelope is renamed out
+    // from under its transactions — the rows, the money and the bank are
+    // identical, only coverage changed. A figure labelled "Spent" that drops by
+    // $120 because of that is reporting on the categorizer, not on the month.
+    const rows = month();
+    const covered = summarizeTotals(
+      summarizeEnvelopes([env("Groceries", 500), env("Restaurants", 300)], [], rows),
+      rows
+    );
+    const degraded = summarizeTotals(summarizeEnvelopes([env("Groceries", 500)], [], rows), rows);
+
+    expect(degraded.totalOutflow).toBe(covered.totalOutflow);
+    expect(degraded.saved).toBe(covered.saved);
+    expect(degraded.totalSpent).toBe(covered.totalSpent - 120);
+    expect(degraded.unattributedSpent).toBe(covered.unattributedSpent + 120);
+  });
+});

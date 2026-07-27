@@ -208,8 +208,11 @@ export default function BudgetScreen() {
                   {fmt(summary.unattributedSpent)} not in any category
                 </Text>
                 <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
+                  {/* "outflow", not "spending": this bucket is every dollar that
+                      left and reached no envelope, which includes a transfer the
+                      user has not marked yet. */}
                   {Math.round((summary.unattributedSpent / summary.totalOutflow) * 100)}% of this
-                  month's spending — counted in your total, but in no category below.
+                  month's outflow — counted in your total, but in no category below.
                 </Text>
               </View>
             </Pressable>

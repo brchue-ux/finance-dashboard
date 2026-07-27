@@ -97,8 +97,15 @@ export default function ReportsScreen() {
               <MonthNav year={year} month={month} onPrev={prevMonth} onNext={nextMonth} />
               {budget ? (
                 <>
+                  {/* Total outflow, matching the Budget tab and this screen's own
+                      charts above. Envelope-attributed spend alone shrinks as
+                      categorization coverage gets worse — the opposite of the
+                      truth — and contradicted the "uncategorized" bar rendered a
+                      few hundred pixels up. The part that reached no envelope is
+                      itemised at the end of the list below rather than dropped,
+                      so the list still sums to this figure. */}
                   <Text style={{ color: COLORS.textPrimary, fontSize: 22, fontWeight: "800", marginBottom: 10 }}>
-                    {money(budget.summary.totalSpent)} spent
+                    {money(budget.summary.totalOutflow)} spent
                   </Text>
                   {budget.envelopes.map((e) => (
                     <View key={e.id} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 }}>
@@ -108,6 +115,34 @@ export default function ReportsScreen() {
                       </Text>
                     </View>
                   ))}
+                  {/* Spend that reached no envelope. Named here so the rows above
+                      add up to the total above them; tappable because it is the
+                      one row a user can act on, and it goes where it gets fixed. */}
+                  {budget.summary.unattributedSpent > 0 && (
+                    <Pressable
+                      onPress={() => router.push("/manage-envelopes")}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Uncategorized ${money(budget.summary.unattributedSpent)} — set up categories`}
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        paddingVertical: 6,
+                        marginTop: 4,
+                        borderTopWidth: 1,
+                        borderTopColor: COLORS.glassBorder,
+                        paddingTop: 10,
+                      }}
+                    >
+                      <Text style={{ color: COLORS.textMuted, fontSize: 13, flex: 1 }} numberOfLines={1}>
+                        Uncategorized
+                      </Text>
+                      <Text style={{ color: COLORS.warning, fontSize: 13, fontWeight: "600" }}>
+                        {money(budget.summary.unattributedSpent)}
+                      </Text>
+                      <Text style={{ color: COLORS.textMuted, fontSize: 15, marginLeft: 6 }}>›</Text>
+                    </Pressable>
+                  )}
                 </>
               ) : (
                 <ActivityIndicator color={COLORS.brandPurple} />
