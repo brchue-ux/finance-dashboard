@@ -8,7 +8,7 @@ import { useRouter } from "expo-router";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientText } from "@/components/ui/GradientText";
 import { COLORS } from "@/constants/theme";
-import { connectionStatusLabel } from "@/lib/connection-status";
+import { connectionStatusColor, connectionStatusLabel } from "@/lib/connection-status";
 import { useSystemStatus } from "@/hooks/useSystem";
 
 /** job_runs timestamps are unix seconds; connection timestamps are too. */
@@ -94,7 +94,7 @@ export default function SystemStatusScreen() {
                   label={b.institution}
                   value={connectionStatusLabel(b.status)}
                   detail={`Last synced ${timeAgo(b.lastSyncedAt)}`}
-                  color={statusColor(b.status)}
+                  color={connectionStatusColor(b.status)}
                 />
               ))}
               {data.connections.wealthsimple && (
@@ -102,7 +102,7 @@ export default function SystemStatusScreen() {
                   label="Wealthsimple"
                   value={connectionStatusLabel(data.connections.wealthsimple.status)}
                   detail={`Last synced ${timeAgo(data.connections.wealthsimple.lastSyncedAt)}`}
-                  color={statusColor(data.connections.wealthsimple.status)}
+                  color={connectionStatusColor(data.connections.wealthsimple.status)}
                 />
               )}
             </GlassCard>

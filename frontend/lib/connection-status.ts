@@ -18,12 +18,14 @@ interface StatusPresentation {
   /** Spec §9 pill: same meaning, glyph-prefixed and short enough for a card. */
   pill: string;
   color: string;
+  /** The connection is broken and the user has to re-authorise it. */
+  needsAction?: boolean;
 }
 
 const STATUS: Record<string, StatusPresentation> = {
   active: { label: "Live", pill: "● Live", color: COLORS.moneyIn },
-  relink_required: { label: "Relink needed", pill: "⚠ Relink", color: COLORS.warning },
-  reconnect_required: { label: "Relink needed", pill: "⚠ Relink", color: COLORS.warning },
+  relink_required: { label: "Relink needed", pill: "⚠ Relink", color: COLORS.warning, needsAction: true },
+  reconnect_required: { label: "Relink needed", pill: "⚠ Relink", color: COLORS.warning, needsAction: true },
   manual: { label: "Manual", pill: "Manual", color: COLORS.textMuted },
 };
 
@@ -36,6 +38,20 @@ function humanize(status: string): string {
 /** Friendly text for any connection status. Never returns a raw enum. */
 export function connectionStatusLabel(status: string): string {
   return STATUS[status]?.label ?? humanize(status);
+}
+
+/**
+ * Colour for any connection status. An unmapped status is not known to be
+ * healthy, so it takes the warning hue rather than reading as live.
+ */
+export function connectionStatusColor(status: string | null | undefined): string {
+  if (!status) return COLORS.textMuted;
+  return STATUS[status]?.color ?? COLORS.warning;
+}
+
+/** True only for statuses the user must act on to restore the connection. */
+export function connectionNeedsAction(status: string | null | undefined): boolean {
+  return status ? STATUS[status]?.needsAction === true : false;
 }
 
 /**

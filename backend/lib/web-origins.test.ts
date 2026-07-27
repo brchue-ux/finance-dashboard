@@ -42,12 +42,18 @@ describe("webOrigins", () => {
 
   it("drops every localhost origin in production", () => {
     const previous = process.env.NODE_ENV;
+    // webOrigins() also appends CORS_ALLOWED_ORIGINS; a shell or CI job that
+    // exports it would otherwise make this exact-empty assertion fail.
+    const previousAllowed = process.env.CORS_ALLOWED_ORIGINS;
     try {
       // NODE_ENV is readonly in @types/node's ProcessEnv; assign through the bag.
       (process.env as Record<string, string>).NODE_ENV = "production";
+      delete process.env.CORS_ALLOWED_ORIGINS;
       expect(webOrigins()).toEqual([]);
     } finally {
       (process.env as Record<string, string>).NODE_ENV = previous ?? "test";
+      if (previousAllowed === undefined) delete process.env.CORS_ALLOWED_ORIGINS;
+      else process.env.CORS_ALLOWED_ORIGINS = previousAllowed;
     }
   });
 
