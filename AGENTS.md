@@ -18,6 +18,8 @@ the sharp edges that bite any session regardless of what it is working on.
 - **Metro's transform cache is shared across worktrees and will resolve `node_modules` against the
   wrong one.** `expo start` and `expo export` both need `--clear` on first run in a new worktree,
   or the bundle/export fails with `Unable to resolve module <other-worktree-path>/...`.
+  Pass it on the command line — neither `npm start` nor `build:web` carries `--clear`, deliberately,
+  because it would pay the cache rebuild on every run for a first-run-only problem.
   (`.claude/CHANGELOG.md` documents the original occurrence.)
 - Never run `npm run build` in `backend/` while a `next dev` is live — they share `.next` and the
   dev server breaks with a webpack chunk mismatch.

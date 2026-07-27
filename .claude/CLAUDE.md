@@ -21,7 +21,7 @@ Two silent-data-loss incidents happened in one night against the REAL database. 
 2. **Direct-sqlite3 writes made near a server kill can vanish with the WAL.** Protocol: direct DB surgery only against a STABLE server (not one about to be killed/swapped); `PRAGMA wal_checkpoint(TRUNCATE)` after writing; re-verify through the RUNNING SERVER'S API, not just a fresh sqlite3 read. Any verification done before a process transition is STALE — re-verify after.
 3. A probe that "can't happen" (e.g. a dedup reporting duplicates of deleted rows) is evidence, not noise — chase it before building on top.
 
-## Current state (as of 2026-07-22 late night, commit `1be5f2d`)
+## Current state (as of 2026-07-27, branch `fm/budget-web`)
 
 Backend is in **REAL-DATA mode** against `local.db` — 3,920 real transactions across 8 accounts
 (RBC Visa, Wealthsimple RESP/Chequing/TFSA/Non-registered/FHSA, Tangerine Chequing/Credit Card).
