@@ -13,8 +13,20 @@ import { llmAnalysisCache, bankConnections, wealthsimpleConnections } from "@/db
 import { eq, and } from "drizzle-orm";
 import { generateCards, type CardView } from "@/lib/llm/advisory";
 import { v4 as uuidv4 } from "uuid";
+import { z } from "zod";
 
 const DEBOUNCE_SECONDS = 120;
+
+/**
+ * `view` is not just a discriminator — it is half of llm_analysis_cache's
+ * unique index, so an unvalidated value would be written straight into the
+ * cache as a new key. It was previously only cast (`as CardView`), which is a
+ * compile-time claim about runtime input.
+ */
+const analyzeBody = z.object({
+  view: z.enum(["budget", "portfolio"]),
+  force: z.boolean().optional().default(false),
+});
 
 /**
  * Card generation takes tens of seconds — it is an agentic model call, not a
@@ -66,7 +78,28 @@ export async function POST(req: NextRequest) {
   const authed = await requireUser(req);
   if ("response" in authed) return authed.response;
 
-  const { view, force = false } = (await req.json()) as { view: CardView; force?: boolean };
+  // A malformed or empty body is a client error, not a server one: an
+  // unguarded req.json() turned both into a 500.
+  const raw = await req.json().catch(() => null);
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return NextResponse.json(
+      { error: "Request body must be a JSON object", code: "INVALID_BODY" },
+      { status: 400 }
+    );
+  }
+  const parsed = analyzeBody.safeParse(raw);
+  if (!parsed.success) {
+    // Named from the issue zod actually found, so a bad `force` no longer
+    // reports a problem with `view`.
+    const issue = parsed.error.issues[0];
+    const field = issue?.path.join(".") || "body";
+    return NextResponse.json(
+      { error: `${field}: ${issue?.message ?? "is invalid"}`, code: "INVALID_BODY" },
+      { status: 400 }
+    );
+  }
+  const { view, force } = parsed.data;
+
   const userId = authed.userId;
   const now = Math.floor(Date.now() / 1000);
 
@@ -95,8 +128,21 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Cold start only: nothing to show, so this one has to block.
-  const cards = await generateCards(userId, view);
+  // Cold start only: nothing to show, so this one has to block. Unlike the
+  // background path there is no cached answer to fall back on, so a missing
+  // ANTHROPIC_API_KEY or a provider outage has to be reported — as 503
+  // "not configured / unavailable", matching what the import routes already
+  // return for the same shape of problem, rather than a bare 500.
+  let cards;
+  try {
+    cards = await generateCards(userId, view);
+  } catch (err) {
+    console.error(`[llm/analyze] cold-start generation failed for ${userId}:${view}:`, err);
+    return NextResponse.json(
+      { error: "Analysis is unavailable right now", code: "ANALYSIS_UNAVAILABLE" },
+      { status: 503 }
+    );
+  }
   const output = JSON.stringify(cards);
 
   await db
