@@ -68,6 +68,8 @@ envelope_from and envelope_to must be copied EXACTLY from an existing envelope's
 "name" in the data context — approving a card applies the move by that name, and
 a name that doesn't exist is rejected. Never invent an envelope.
 amount must be positive and no larger than envelope_from's budgetedThisMonth.
+amount must be a whole number of cents — at most two decimal places, because a
+finer amount cannot be stored and the card is rejected on approval.
 Insight cards omit those fields.
 `;
 
