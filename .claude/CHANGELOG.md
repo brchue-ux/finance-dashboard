@@ -68,7 +68,9 @@ Two silent-data-loss incidents happened in ONE night against the REAL database. 
   -501¢ and -500¢, no longer summing to their parent; a 0.005 reallocation rounded one side down
   and the other up, creating a cent out of nothing. Both validators now refuse a non-whole-cent
   amount with the existing 400. `SPLIT_SUM_EPSILON` was NOT widened and the sum-vs-parent check
-  is unchanged — this is an added precondition. Same house style as `fromCents` throwing.
+  is unchanged — this is an added precondition. Same house style as `fromCents` throwing. The LLM
+  action-card prompt states the same rule (at most two decimal places), so a proposed reallocation
+  isn't generated only to be refused at approval time.
 - Money fields on write routes are bounded via `coerceMoneyAmount` in `lib/request-body.ts`, so
   an absurd magnitude is a 400 instead of an unhandled 500 from `toCents`' RangeError (that
   throw stays as the last line of defence). The import pipeline range-checks parsed amounts the

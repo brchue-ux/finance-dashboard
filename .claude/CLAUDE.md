@@ -44,7 +44,11 @@ heap in `backend`'s build script is a ceiling, not a requirement. Detail: `AGENT
 OAuth callbacks log the provider's error server-side (sanitized) and reflect **nothing** back to
 the browser; HTML escaping lives in `lib/close-page.ts`. Money-write routes (transaction update,
 splits, allocations/reallocate) gate body shape and integer coercion through `lib/request-body.ts`
-— `Number([]) === 0` passes `Number.isInteger`, which once wrote allocations for year 0. Route new
+— `Number([]) === 0` passes `Number.isInteger`, which once wrote allocations for year 0. Dollar
+amounts go through `coerceMoneyAmount` (same permissiveness trap, plus a magnitude bound so an
+absurd figure is a 400 rather than a 500 from `toCents`), and a **non-whole-cent amount is
+rejected with a 400, never silently quantized** (`isWholeCents` in `lib/money.ts`; storage
+quantizes each row on its own, so sub-cent splits stop summing to their parent). Route new
 handlers through these helpers rather than re-deriving them. Why, in `.claude/CHANGELOG.md`.
 
 **Expo web is a supported target** — sign-in and all nine gradient-title screens verified in a
@@ -111,7 +115,11 @@ Full detail, every commit hash, and every fixed bug for the above: `.claude/CHAN
 - **Never mark the frontend verified without an explicit user OK.** "User said commit/push" is
   NOT "user confirmed it works."
 - **Rules are SCOPED, not catch-all.** Region/currency is a keep-door-open constraint — no
-  hardcoded CAD assumptions in new code (single-user Canadian today, but not a hard dependency).
+  hardcoded CAD assumptions in new code. Single-user Canadian is the *development* posture only;
+  the schema is already multi-tenant and the target regions are Canada and the USA with the EU a
+  door left open. CAD/USD/EUR are all two-decimal, which is why the money seam's
+  `CENTS_PER_DOLLAR` is a constant — a zero- or three-decimal currency would need the scale
+  chosen per `iso_currency_code` (`backend/lib/money.ts` says so at the definition).
 - **RN lesson:** never use a `flex: 1` root in a content-sized (`maxHeight`-only) bottom sheet —
   it collapses to zero height. Size to content, bound any inner ScrollView.
 
