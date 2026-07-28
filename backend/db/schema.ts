@@ -9,6 +9,11 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
+// Ledger money is stored as integer cents and read back as dollars — see
+// lib/money.ts for the rounding rule and why this seam exists. Relative import,
+// not "@/lib/money": drizzle-kit loads this file outside Next's path resolution.
+import { moneyCents } from "../lib/money";
+
 // ── user / session / account / verification (Better Auth) ─────────────────────
 // Generated via `npx @better-auth/cli generate` against lib/auth.ts.
 // This is the canonical identity table — app tables reference user.id, not a
@@ -139,9 +144,9 @@ export const bankAccounts = sqliteTable("bank_accounts", {
   mask: text("mask"), // last 4 digits
   institution: text("institution").notNull(),
   // Current balances from Plaid /accounts/get — overwritten each sync; history in bank_balance_snapshots
-  balanceAvailable: real("balance_available"),
-  balanceCurrent: real("balance_current"),
-  balanceLimit: real("balance_limit"), // credit accounts
+  balanceAvailable: moneyCents("balance_available"),
+  balanceCurrent: moneyCents("balance_current"),
+  balanceLimit: moneyCents("balance_limit"), // credit accounts
   isoCurrencyCode: text("iso_currency_code"),
 });
 
@@ -161,7 +166,7 @@ export const transactions = sqliteTable("transactions", {
   merchantName: text("merchant_name"), // cleaned by categorization engine
   merchantLogoUrl: text("merchant_logo_url"), // Plaid merchant enrichment
   merchantWebsite: text("merchant_website"), // Plaid merchant enrichment
-  amount: real("amount").notNull(), // negative = debit, positive = credit
+  amount: moneyCents("amount").notNull(), // negative = debit, positive = credit
   isoCurrencyCode: text("iso_currency_code"),
   category: text("category"), // envelope name assigned (app's own engine)
   // How `category` got its value. "manual" means the user set it by hand, and a
@@ -214,7 +219,7 @@ export const transactionSplits = sqliteTable(
     // or deactivated.
     category: text("category").notNull(),
     // Same sign convention as the parent: negative = spend.
-    amount: real("amount").notNull(),
+    amount: moneyCents("amount").notNull(),
     note: text("note"), // optional, e.g. "dog food"
     createdAt: integer("created_at").notNull(),
   },
@@ -358,7 +363,7 @@ export const budgetEnvelopes = sqliteTable("budget_envelopes", {
     .notNull()
     .references(() => user.id),
   name: text("name").notNull(),
-  monthlyTarget: real("monthly_target").notNull(),
+  monthlyTarget: moneyCents("monthly_target").notNull(),
   categoryRules: text("category_rules").notNull(), // JSON: string[]
   active: integer("active").notNull().default(1),
   sortOrder: integer("sort_order").notNull().default(0),
@@ -383,7 +388,7 @@ export const envelopeAllocations = sqliteTable(
       .references(() => budgetEnvelopes.id),
     year: integer("year").notNull(),
     month: integer("month").notNull(), // 1-12
-    allocated: real("allocated").notNull(),
+    allocated: moneyCents("allocated").notNull(),
   },
   (t) => [uniqueIndex("uq_envelope_year_month").on(t.envelopeId, t.year, t.month)]
 );
