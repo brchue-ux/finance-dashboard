@@ -153,4 +153,31 @@ describe("planReallocation", () => {
   ])("rejects a %s envelope name", (_label, fromName) => {
     expect(plan({ fromName }).ok).toBe(false);
   });
+
+  it("rejects a sub-cent amount rather than creating a cent from nothing", () => {
+    // Storage quantizes each side independently: 800 − 0.005 rounds down and
+    // 300 + 0.005 rounds up, so the total budgeted grows by a cent.
+    const r = plan({ amount: 0.005 });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toMatch(/whole number of cents/);
+  });
+
+  it("still accepts an ordinary two-decimal amount", () => {
+    const r = plan({ amount: 12.34 });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.plan.from.after).toBeCloseTo(787.66, 10);
+    expect(r.plan.to.after).toBeCloseTo(312.34, 10);
+  });
+
+  it("rejects an amount too large to represent as cents", () => {
+    // Would otherwise reach toCents and throw a RangeError, i.e. a 500.
+    expect(plan({ amount: 1e20 }).ok).toBe(false);
+  });
+
+  it("rejects the values Number() silently coerces to a positive amount", () => {
+    expect(plan({ amount: true }).ok).toBe(false);
+    expect(plan({ amount: [50] }).ok).toBe(false);
+  });
 });

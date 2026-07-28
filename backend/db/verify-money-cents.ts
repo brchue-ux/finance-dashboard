@@ -40,6 +40,9 @@ import {
 
 const MAX_REPORTED_ROWS = 20;
 
+/** Rows fetched per round trip, per side. See `readRows`. */
+const PAGE_SIZE = 500;
+
 let failures = 0;
 
 function pass(message: string): void {
@@ -126,93 +129,167 @@ async function checkColumnTypes(before: Client, after: Client): Promise<void> {
   }
 }
 
+/**
+ * One column's running verdict. Held per column for the length of a table's
+ * walk; nothing else about the table is retained.
+ */
+interface ColumnCheck {
+  compared: number;
+  nulls: number;
+  nonInteger: number;
+  maxDelta: number;
+  sumBefore: number;
+  sumCentsAfter: number;
+  problems: string[];
+}
+
+function newColumnCheck(): ColumnCheck {
+  return {
+    compared: 0,
+    nulls: 0,
+    nonInteger: 0,
+    maxDelta: 0,
+    sumBefore: 0,
+    sumCentsAfter: 0,
+    problems: [],
+  };
+}
+
+/** Marks "the before row has no counterpart after", distinct from a NULL value. */
+const ROW_MISSING = Symbol("row missing after");
+
+function checkCell(
+  c: ColumnCheck,
+  id: string,
+  rawBefore: unknown,
+  rawAfter: unknown | typeof ROW_MISSING
+): void {
+  if (rawAfter === ROW_MISSING) {
+    if (c.problems.length < MAX_REPORTED_ROWS) c.problems.push(`id ${id}: row missing after`);
+    return;
+  }
+
+  if (rawBefore === null || rawBefore === undefined) {
+    c.nulls += 1;
+    if (rawAfter !== null && rawAfter !== undefined) {
+      if (c.problems.length < MAX_REPORTED_ROWS) {
+        c.problems.push(`id ${id}: NULL before, ${String(rawAfter)} after`);
+      }
+    }
+    return;
+  }
+  if (rawAfter === null || rawAfter === undefined) {
+    if (c.problems.length < MAX_REPORTED_ROWS) {
+      c.problems.push(`id ${id}: ${String(rawBefore)} before, NULL after`);
+    }
+    return;
+  }
+
+  const dollarsBefore = Number(rawBefore);
+  const centsAfter = Number(rawAfter);
+
+  if (!Number.isInteger(centsAfter)) {
+    c.nonInteger += 1;
+    if (c.problems.length < MAX_REPORTED_ROWS) {
+      c.problems.push(`id ${id}: stored value ${centsAfter} is not an integer`);
+    }
+    return;
+  }
+
+  // Primary check, and it is exact: the stored cents must be what the
+  // documented rounding rule produces from the original dollars. No
+  // tolerance is needed or wanted here — "close enough" would hide a row
+  // the migration skipped and something else later nudged.
+  const expected = toCents(dollarsBefore);
+  if (centsAfter !== expected) {
+    if (c.problems.length < MAX_REPORTED_ROWS) {
+      c.problems.push(
+        `id ${id}: ${dollarsBefore} → expected ${expected}¢ by the rounding rule, stored ${centsAfter}¢`
+      );
+    }
+    return;
+  }
+
+  // Independent bound, derived from the values rather than from the rule,
+  // so a wrong rule cannot pass by agreeing with itself.
+  const delta = Math.abs(fromCents(centsAfter) - dollarsBefore);
+  if (delta > CONVERSION_TOLERANCE_DOLLARS + COMPARISON_EPSILON_DOLLARS) {
+    if (c.problems.length < MAX_REPORTED_ROWS) {
+      c.problems.push(
+        `id ${id}: ${dollarsBefore} before → ${fromCents(centsAfter)} after (Δ ${delta})`
+      );
+    }
+  }
+
+  c.compared += 1;
+  c.maxDelta = Math.max(c.maxDelta, delta);
+  c.sumBefore += dollarsBefore;
+  c.sumCentsAfter += centsAfter;
+}
+
+/**
+ * A table's id + money columns, read in keyset pages over `id` rather than all
+ * at once. `DATABASE_URL` may be remote (`drizzle.config.ts` uses the "turso"
+ * dialect), and holding two whole tables in memory to compare them is the one
+ * cost this script has no reason to pay.
+ */
+async function* readRows(
+  client: Client,
+  table: string,
+  columns: readonly string[]
+): AsyncGenerator<Record<string, unknown>> {
+  const quoted = columns.map((c) => `"${c}"`).join(", ");
+  const name = `"${table.replace(/"/g, '""')}"`;
+  let cursor: string | null = null;
+
+  for (;;) {
+    const page = await client.execute({
+      sql:
+        `select "id", ${quoted} from ${name} ` +
+        `${cursor === null ? "" : 'where "id" > ? '}order by "id" limit ?`,
+      args: cursor === null ? [PAGE_SIZE] : [cursor, PAGE_SIZE],
+    });
+    if (page.rows.length === 0) return;
+    for (const row of page.rows) yield row as unknown as Record<string, unknown>;
+    if (page.rows.length < PAGE_SIZE) return;
+    cursor = String(page.rows[page.rows.length - 1].id);
+  }
+}
+
 async function checkValues(before: Client, after: Client): Promise<void> {
   console.log("\n  Per-row round trip and column totals");
 
   for (const { table, columns } of MONEY_COLUMNS) {
-    const quoted = columns.map((c) => `"${c}"`).join(", ");
-    const sel = `select "id", ${quoted} from "${table}" order by "id"`;
-    const [b, a] = [await before.execute(sel), await after.execute(sel)];
+    // Both sides arrive in `id` order, so one merge-walk pairs them without
+    // indexing either side. Extra rows on the after side are not this check's
+    // business — checkRowCounts already speaks for those.
+    const beforeRows = readRows(before, table, columns);
+    const afterRows = readRows(after, table, columns);
+    const checks = new Map(columns.map((c) => [c, newColumnCheck()]));
 
-    const afterById = new Map(a.rows.map((r) => [String(r.id), r]));
+    let b = await beforeRows.next();
+    let a = await afterRows.next();
+    while (!b.done) {
+      const id = String(b.value.id);
+      while (!a.done && String(a.value.id) < id) a = await afterRows.next();
+      const paired = !a.done && String(a.value.id) === id ? a.value : null;
+
+      for (const column of columns) {
+        checkCell(
+          checks.get(column)!,
+          id,
+          b.value[column],
+          paired ? paired[column] : ROW_MISSING
+        );
+      }
+
+      if (paired) a = await afterRows.next();
+      b = await beforeRows.next();
+    }
 
     for (const column of columns) {
-      let compared = 0;
-      let nulls = 0;
-      let nonInteger = 0;
-      let maxDelta = 0;
-      let sumBefore = 0;
-      let sumCentsAfter = 0;
-      const problems: string[] = [];
-
-      for (const beforeRow of b.rows) {
-        const id = String(beforeRow.id);
-        const afterRow = afterById.get(id);
-        if (!afterRow) {
-          if (problems.length < MAX_REPORTED_ROWS) problems.push(`id ${id}: row missing after`);
-          continue;
-        }
-
-        const rawBefore = beforeRow[column];
-        const rawAfter = afterRow[column];
-
-        if (rawBefore === null || rawBefore === undefined) {
-          nulls += 1;
-          if (rawAfter !== null && rawAfter !== undefined) {
-            if (problems.length < MAX_REPORTED_ROWS) {
-              problems.push(`id ${id}: NULL before, ${String(rawAfter)} after`);
-            }
-          }
-          continue;
-        }
-        if (rawAfter === null || rawAfter === undefined) {
-          if (problems.length < MAX_REPORTED_ROWS) {
-            problems.push(`id ${id}: ${String(rawBefore)} before, NULL after`);
-          }
-          continue;
-        }
-
-        const dollarsBefore = Number(rawBefore);
-        const centsAfter = Number(rawAfter);
-
-        if (!Number.isInteger(centsAfter)) {
-          nonInteger += 1;
-          if (problems.length < MAX_REPORTED_ROWS) {
-            problems.push(`id ${id}: stored value ${centsAfter} is not an integer`);
-          }
-          continue;
-        }
-
-        // Primary check, and it is exact: the stored cents must be what the
-        // documented rounding rule produces from the original dollars. No
-        // tolerance is needed or wanted here — "close enough" would hide a row
-        // the migration skipped and something else later nudged.
-        const expected = toCents(dollarsBefore);
-        if (centsAfter !== expected) {
-          if (problems.length < MAX_REPORTED_ROWS) {
-            problems.push(
-              `id ${id}: ${dollarsBefore} → expected ${expected}¢ by the rounding rule, stored ${centsAfter}¢`
-            );
-          }
-          continue;
-        }
-
-        // Independent bound, derived from the values rather than from the rule,
-        // so a wrong rule cannot pass by agreeing with itself.
-        const delta = Math.abs(fromCents(centsAfter) - dollarsBefore);
-        if (delta > CONVERSION_TOLERANCE_DOLLARS + COMPARISON_EPSILON_DOLLARS) {
-          if (problems.length < MAX_REPORTED_ROWS) {
-            problems.push(
-              `id ${id}: ${dollarsBefore} before → ${fromCents(centsAfter)} after (Δ ${delta})`
-            );
-          }
-        }
-
-        compared += 1;
-        maxDelta = Math.max(maxDelta, delta);
-        sumBefore += dollarsBefore;
-        sumCentsAfter += centsAfter;
-      }
+      const { compared, nulls, nonInteger, maxDelta, sumBefore, sumCentsAfter, problems } =
+        checks.get(column)!;
 
       const label = `${table}.${column}`;
       if (problems.length > 0 || nonInteger > 0) {

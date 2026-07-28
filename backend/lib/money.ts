@@ -33,6 +33,16 @@
  *
  * Do not add `Math.round` at a call site. If a value needs to become cents, it
  * goes through `toCents`.
+ *
+ * ## Minor unit: two decimals, module-wide
+ *
+ * `CENTS_PER_DOLLAR` is a module constant, so the seam assumes every amount it
+ * sees uses a **two-decimal minor unit**. That holds for CAD, USD and EUR — the
+ * target regions — and the schema's `iso_currency_code` columns are therefore
+ * not consulted here. A zero-decimal currency (JPY) or a three-decimal one
+ * (KWD, BHD) would break that assumption: supporting one means selecting the
+ * scale per `iso_currency_code` at the point of conversion rather than reading
+ * it off a constant. Nothing here does that today, on purpose.
  */
 import { customType } from "drizzle-orm/sqlite-core";
 
@@ -95,6 +105,21 @@ export function fromCents(cents: number): number {
     );
   }
   return cents / CENTS_PER_DOLLAR;
+}
+
+/**
+ * Is this amount already an exact whole number of cents?
+ *
+ * Storage quantizes every money value independently, so a set of amounts that
+ * must stay in agreement (splits summing to their parent, a reallocation moving
+ * exactly what it takes) has to be whole cents *before* it is written — half a
+ * cent per row survives validation and then rounds each row its own way.
+ * Validators use this to refuse such input rather than to quantize it silently.
+ *
+ * Defined in terms of `toCents` so there is still exactly one rounding rule.
+ */
+export function isWholeCents(dollars: number): boolean {
+  return fromCents(toCents(dollars)) === dollars;
 }
 
 /** `toCents` for nullable money columns; null and undefined pass through as null. */

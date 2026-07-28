@@ -64,6 +64,12 @@ declared in `db/schema.ts`. Consequences worth knowing before you touch a money 
   append-only, so a period where they disagreed could not be recomputed afterwards. If either ever
   changes representation again, both change in the same migration.
 
+**Order matters when this meets a database with data in it:** migrate BEFORE the new schema
+arrives (a deploy, or a `drizzle-kit push`). A push sets the declared column type without
+converting a value, and that type is the migration's idempotency marker, so migrating afterwards
+skips columns still holding dollars. The migration probes for that and refuses, but the probe
+cannot see a whole-dollar row — the ordering is the real protection.
+
 Migrating an existing database is `db/migrate-money-to-cents.ts` (dry-run by default, one
 transaction, idempotent, rebuilds each table because SQLite cannot ALTER a column's type), and
 `db/verify-money-cents.ts --before <backup.db>` proves it — per-table row counts across ALL tables,

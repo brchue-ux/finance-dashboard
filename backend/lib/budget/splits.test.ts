@@ -107,6 +107,39 @@ describe("validateSplits — shape", () => {
     ).toBe(false);
   });
 
+  it("rejects a sub-cent split even when the set sums exactly", () => {
+    // -5.005 and -4.995 sum to exactly -10.00 and pass the sum check, but
+    // storage quantizes each row on its own: -501¢ and -500¢ = -$10.01. The set
+    // would stop summing to its parent with nothing left to notice it.
+    const r = validateSplits(-10, [
+      { category: "Groceries", amount: -5.005 },
+      { category: "Shopping", amount: -4.995 },
+    ]);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toMatch(/whole number of cents/);
+  });
+
+  it("still accepts ordinary two-decimal splits", () => {
+    const s = ok(
+      validateSplits(-10.01, [
+        { category: "Groceries", amount: -5.01 },
+        { category: "Shopping", amount: -5 },
+      ])
+    );
+    expect(s.map((x) => x.amount)).toEqual([-5.01, -5]);
+  });
+
+  it("rejects an amount too large to represent as cents", () => {
+    // Would otherwise reach toCents and throw a RangeError, i.e. a 500.
+    expect(
+      validateSplits(-100, [
+        { category: "A", amount: -1e20 },
+        { category: "B", amount: 1e20 - 100 },
+      ]).ok
+    ).toBe(false);
+  });
+
   it("trims categories and normalizes blank notes to null", () => {
     const s = ok(
       validateSplits(-100, [

@@ -68,14 +68,16 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
   // Replace atomically: a partial write would leave the transaction attributed
   // to a set that doesn't sum to its amount, skewing every budget total until
   // someone noticed.
-  await db.transaction(async (tx) => {
+  const stored = await db.transaction(async (tx) => {
     await tx.delete(transactionSplits).where(eq(transactionSplits.transactionId, id));
-    await tx.insert(transactionSplits).values(rows);
+    // `returning()` so the response carries what the database holds rather than
+    // what the caller sent — money is quantized to cents on the way in.
+    return tx.insert(transactionSplits).values(rows).returning();
   });
 
   return NextResponse.json({
     ok: true,
-    splits: rows.map((s) => ({ id: s.id, category: s.category, amount: s.amount, note: s.note })),
+    splits: stored.map((s) => ({ id: s.id, category: s.category, amount: s.amount, note: s.note })),
   });
 }
 

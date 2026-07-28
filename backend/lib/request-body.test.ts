@@ -7,7 +7,13 @@
  * year 0, because `Number([])` is 0 and `Number.isInteger(0)` is true.
  */
 import { describe, it, expect } from "vitest";
-import { readJsonObject, coerceInteger } from "./request-body";
+import {
+  readJsonObject,
+  coerceInteger,
+  coerceMoneyAmount,
+  MAX_MONEY_DOLLARS,
+} from "./request-body";
+import { toCents } from "./money";
 
 function jsonRequest(body: string): Request {
   return new Request("http://localhost/x", {
@@ -63,5 +69,43 @@ describe("coerceInteger", () => {
     expect(coerceInteger(Infinity)).toBeNull();
     expect(coerceInteger(undefined)).toBeNull();
     expect(coerceInteger({})).toBeNull();
+  });
+});
+
+describe("coerceMoneyAmount", () => {
+  it("accepts ordinary amounts of either sign, as number or numeric string", () => {
+    expect(coerceMoneyAmount(10.005)).toBe(10.005);
+    expect(coerceMoneyAmount(-42.5)).toBe(-42.5);
+    expect(coerceMoneyAmount("19.99")).toBe(19.99);
+    expect(coerceMoneyAmount(0)).toBe(0);
+  });
+
+  it("rejects the values Number() silently coerces to a valid amount", () => {
+    expect(coerceMoneyAmount([])).toBeNull();
+    expect(coerceMoneyAmount(true)).toBeNull();
+    expect(coerceMoneyAmount(null)).toBeNull();
+    expect(coerceMoneyAmount("")).toBeNull();
+    expect(coerceMoneyAmount("   ")).toBeNull();
+    expect(coerceMoneyAmount(undefined)).toBeNull();
+    expect(coerceMoneyAmount({})).toBeNull();
+  });
+
+  it("rejects non-finite values", () => {
+    expect(coerceMoneyAmount(NaN)).toBeNull();
+    expect(coerceMoneyAmount(Infinity)).toBeNull();
+    expect(coerceMoneyAmount(-Infinity)).toBeNull();
+  });
+
+  it("bounds the magnitude so an absurd amount is a 400, not a 500", () => {
+    // toCents throws a RangeError past its safe-integer cents range; a throw in
+    // a route handler is an unhandled 500 for what is squarely client input.
+    expect(coerceMoneyAmount(1e20)).toBeNull();
+    expect(coerceMoneyAmount(-1e20)).toBeNull();
+    expect(coerceMoneyAmount(MAX_MONEY_DOLLARS)).toBe(MAX_MONEY_DOLLARS);
+  });
+
+  it("keeps the bound comfortably inside what toCents can represent", () => {
+    expect(() => toCents(MAX_MONEY_DOLLARS)).not.toThrow();
+    expect(() => toCents(-MAX_MONEY_DOLLARS)).not.toThrow();
   });
 });

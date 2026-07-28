@@ -16,6 +16,7 @@ import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { budgetEnvelopes } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
+import { coerceMoneyAmount } from "@/lib/request-body";
 
 export async function GET(req: NextRequest) {
   const authed = await requireUser(req);
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   const name = typeof body?.name === "string" ? body.name.trim() : "";
-  const monthlyTarget = Number(body?.monthlyTarget);
+  const monthlyTarget = coerceMoneyAmount(body?.monthlyTarget);
   const categoryRules = Array.isArray(body?.categoryRules)
     ? body.categoryRules.filter((r: unknown): r is string => typeof r === "string")
     : [];
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
   if (!name) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
-  if (!Number.isFinite(monthlyTarget) || monthlyTarget < 0) {
+  if (monthlyTarget === null || monthlyTarget < 0) {
     return NextResponse.json(
       { error: "monthlyTarget must be a non-negative number" },
       { status: 400 }
@@ -89,14 +90,18 @@ export async function POST(req: NextRequest) {
     createdAt: Date.now(),
   };
 
-  await db.insert(budgetEnvelopes).values(row);
+  // `returning()` rather than echoing `row`: money is quantized to cents on the
+  // way in, so the caller's own input is not necessarily what the database now
+  // holds, and an optimistic client would carry a figure the next read disagrees
+  // with by a cent.
+  const [stored] = await db.insert(budgetEnvelopes).values(row).returning();
 
   return NextResponse.json(
     {
       envelope: {
         id: row.id,
         name: row.name,
-        monthlyTarget: row.monthlyTarget,
+        monthlyTarget: stored.monthlyTarget,
         categoryRules,
         active: true,
         sortOrder: row.sortOrder,

@@ -65,6 +65,19 @@ describe("normalizeMappedRows — grid shapes real spreadsheets produce", () => 
     expect(errors).toHaveLength(2);
   });
 
+  it("reports an out-of-range amount as one bad row, not a failed import", () => {
+    // Finite, so the old NaN check passed it through — and it then threw at the
+    // money seam, taking the whole import down with a 500.
+    const { normalized, errors } = normalizeMappedRows(
+      [header, ["2026-07-18", "ABSURD", "1e300", "", ""], ["2026-07-19", "FINE", "-20", "", ""]],
+      mapping
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("ABSURD");
+    expect(normalized).toHaveLength(1);
+    expect(normalized[0]).toMatchObject({ description: "FINE", amount: -20 });
+  });
+
   it("keeps existing behavior: $/comma amounts, unicode descriptions, optional category", () => {
     const { normalized, errors } = normalizeMappedRows(
       [header, ["07/04/2026", "SHELL GAS BAR", "-$1,234.56", "Transport", ""], ["2026-07-10", 'Café "Léa", Crème & Co 🍰', "12.5", "", ""]],

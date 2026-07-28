@@ -42,3 +42,35 @@ export function coerceInteger(value: unknown): number | null {
   }
   return null;
 }
+
+/**
+ * The largest magnitude a money field may carry, in dollars.
+ *
+ * `toCents` throws a RangeError once an amount leaves the exactly representable
+ * cents range, and a throw inside a route handler is a 500 — a server error for
+ * what is a client one. Bounding here turns it into the 400 it always was, and
+ * leaves that throw in place as the last line of defence rather than the first.
+ * A trillion is orders of magnitude above any real balance and orders of
+ * magnitude below where `toCents` gives up.
+ */
+export const MAX_MONEY_DOLLARS = 1e12;
+
+/**
+ * A JSON number or numeric string within the money range, and nothing else.
+ *
+ * Same permissiveness problem as `coerceInteger`: `Number([])` is 0 and
+ * `Number(true)` is 1, both of which pass a bare `Number.isFinite` check. Sign
+ * is deliberately not judged here — the ledger's convention (negative = debit)
+ * means each caller wants a different rule, so they apply their own.
+ */
+export function coerceMoneyAmount(value: unknown): number | null {
+  const n =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : NaN;
+  if (!Number.isFinite(n)) return null;
+  if (Math.abs(n) > MAX_MONEY_DOLLARS) return null;
+  return n;
+}

@@ -38,15 +38,34 @@
  * skipped. That marker is only set in phase B, and phases A and B share a
  * transaction, so "converted values but still REAL" is not a reachable state.
  *
+ * ## Ordering: migrate BEFORE the new schema reaches the database
+ *
+ * The marker is the declared type, and `drizzle-kit push` (or deploying code
+ * built on the new `schema.ts`) sets that type without converting a value. Run
+ * in that order, this script would find INTEGER columns full of dollars and
+ * report "nothing to do", after which every read is 100× too small — silently,
+ * because a whole-dollar amount is a valid integer. `assertNotPushedFirst`
+ * refuses to skip a table that still holds fractional values for exactly this
+ * reason; migrate first, deploy second.
+ *
  * Running it is NOT this script's whole job — `db/verify-money-cents.ts` proves
  * the result against a pre-migration copy. Take that copy first.
  */
-import { createClient, type Client, type Transaction } from "@libsql/client";
+import { createClient, type Client, type InStatement, type Transaction } from "@libsql/client";
 
 import { toCents } from "../lib/money";
 import { MONEY_COLUMNS } from "./money-columns";
 
 const TEMP_PREFIX = "__cents_migration_";
+
+/**
+ * Rows read, and updates sent, per round trip. `drizzle.config.ts` uses the
+ * "turso" dialect and this script honours `DATABASE_AUTH_TOKEN`, so
+ * `DATABASE_URL` may be remote and every statement a network call — the old
+ * shape (whole table into memory, one UPDATE per row) was both unbounded memory
+ * and N round trips inside one long write transaction.
+ */
+const PAGE_SIZE = 500;
 
 type ColumnState = { column: string; declaredType: string; alreadyCents: boolean };
 
@@ -97,6 +116,43 @@ function quoteIdent(name: string): string {
 }
 
 /**
+ * The idempotency marker is the DECLARED column type, which a `drizzle-kit push`
+ * of the new schema sets on its own — without touching a single value. Deploying
+ * or pushing before migrating therefore produces a database whose columns say
+ * "cents" while still holding dollars, and this script would call it done.
+ *
+ * That is not a loud failure on read either: $100.00 stored as 100 is a perfectly
+ * valid integer, so `fromCents` renders it as $1.00 and says nothing. So when a
+ * table already claims to be migrated, prove it: one EXISTS-style probe per
+ * column for a value that is not integral. It cannot catch a whole-dollar row,
+ * but any real table has fractional amounts, and this is the only cheap signal
+ * available after the fact — hence the emphasis on ordering in the message.
+ */
+async function assertNotPushedFirst(
+  client: Client,
+  table: string,
+  columns: readonly string[]
+): Promise<void> {
+  for (const column of columns) {
+    const col = quoteIdent(column);
+    const r = await client.execute(
+      `select 1 from ${quoteIdent(table)} where ${col} is not null ` +
+        `and cast(${col} as integer) <> ${col} limit 1`
+    );
+    if (r.rows.length > 0) {
+      fail(
+        `"${table}.${column}" is declared INTEGER but still holds fractional values — this database ` +
+          `was NOT migrated.\n` +
+          `  The likely cause is ordering: the new schema reached it first (a deploy, or a ` +
+          `drizzle-kit push) before this migration ran.\n` +
+          `  Skipping now would leave whole-dollar rows reading 100× too small, silently. Restore ` +
+          `the pre-push backup, run this migration against it, and deploy the new schema after.`
+      );
+    }
+  }
+}
+
+/**
  * Rewrite just the type token of the named columns in a CREATE TABLE statement,
  * leaving every other byte alone. Anchored on the column name as drizzle-kit
  * emits it (a quoted identifier at the start of a column definition), and the
@@ -124,52 +180,78 @@ function rewriteDdl(ddl: string, table: string, columns: readonly string[]): str
   return named;
 }
 
-/** Phase A — convert this table's money values to cents, in place. */
+/**
+ * Phase A — convert this table's money values to cents, in place.
+ *
+ * Read in keyset pages over `id` and write each page's updates as one batch, so
+ * memory and round trips are both bounded by PAGE_SIZE rather than by the
+ * table's size. The keyset is stable under this workload: an UPDATE here never
+ * touches `id`, so a converted row cannot reorder itself into a later page.
+ * Everything still runs on the caller's transaction.
+ */
 async function convertValues(
   tx: Transaction,
   table: string,
   columns: readonly string[]
 ): Promise<{ rows: number; converted: number; nulls: number; maxShiftDollars: number }> {
   const cols = columns.map(quoteIdent).join(", ");
-  const rows = await tx.execute(`select "id", ${cols} from ${quoteIdent(table)}`);
 
+  let rowsSeen = 0;
   let converted = 0;
   let nulls = 0;
   let maxShiftDollars = 0;
+  let cursor: string | null = null;
 
-  for (const row of rows.rows) {
-    const updates: string[] = [];
-    const args: (number | string)[] = [];
+  for (;;) {
+    const page = await tx.execute({
+      sql:
+        `select "id", ${cols} from ${quoteIdent(table)} ` +
+        `${cursor === null ? "" : 'where "id" > ? '}order by "id" limit ?`,
+      args: cursor === null ? [PAGE_SIZE] : [cursor, PAGE_SIZE],
+    });
+    if (page.rows.length === 0) break;
 
-    for (const column of columns) {
-      const value = row[column];
-      if (value === null || value === undefined) {
-        nulls += 1;
-        continue;
+    const writes: InStatement[] = [];
+    for (const row of page.rows) {
+      const updates: string[] = [];
+      const args: (number | string)[] = [];
+
+      for (const column of columns) {
+        const value = row[column];
+        if (value === null || value === undefined) {
+          nulls += 1;
+          continue;
+        }
+        const dollars = Number(value);
+        if (!Number.isFinite(dollars)) {
+          fail(
+            `${table}.${column} holds a non-numeric value (${String(value)}) for id ${String(row.id)} — ` +
+              `resolve that row before migrating`
+          );
+        }
+        const cents = toCents(dollars);
+        maxShiftDollars = Math.max(maxShiftDollars, Math.abs(cents / 100 - dollars));
+        updates.push(`${quoteIdent(column)} = ?`);
+        args.push(cents);
+        converted += 1;
       }
-      const dollars = Number(value);
-      if (!Number.isFinite(dollars)) {
-        fail(
-          `${table}.${column} holds a non-numeric value (${String(value)}) for id ${String(row.id)} — ` +
-            `resolve that row before migrating`
-        );
-      }
-      const cents = toCents(dollars);
-      maxShiftDollars = Math.max(maxShiftDollars, Math.abs(cents / 100 - dollars));
-      updates.push(`${quoteIdent(column)} = ?`);
-      args.push(cents);
-      converted += 1;
+
+      if (updates.length === 0) continue;
+      args.push(String(row.id));
+      writes.push({
+        sql: `update ${quoteIdent(table)} set ${updates.join(", ")} where "id" = ?`,
+        args,
+      });
     }
 
-    if (updates.length === 0) continue;
-    args.push(String(row.id));
-    await tx.execute({
-      sql: `update ${quoteIdent(table)} set ${updates.join(", ")} where "id" = ?`,
-      args,
-    });
+    if (writes.length > 0) await tx.batch(writes);
+
+    rowsSeen += page.rows.length;
+    cursor = String(page.rows[page.rows.length - 1].id);
+    if (page.rows.length < PAGE_SIZE) break;
   }
 
-  return { rows: rows.rows.length, converted, nulls, maxShiftDollars };
+  return { rows: rowsSeen, converted, nulls, maxShiftDollars };
 }
 
 /** Phase B — rebuild the table with the money columns declared INTEGER. */
@@ -251,6 +333,7 @@ async function main() {
           `restore from backup rather than continuing`
       );
     }
+    if (done.length === states.length) await assertNotPushedFirst(client, table, columns);
     const count = await client.execute(`select count(*) as n from ${quoteIdent(table)}`);
     plan.push({
       table,

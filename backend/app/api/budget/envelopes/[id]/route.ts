@@ -11,6 +11,7 @@ import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { budgetEnvelopes, learnedRules, transactions, transactionSplits } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
+import { coerceMoneyAmount } from "@/lib/request-body";
 
 async function ownedEnvelope(req: NextRequest, id: string) {
   const authed = await requireUser(req);
@@ -40,8 +41,8 @@ export async function PATCH(
     patch.name = body.name.trim();
   }
   if (body?.monthlyTarget !== undefined) {
-    const t = Number(body.monthlyTarget);
-    if (!Number.isFinite(t) || t < 0) {
+    const t = coerceMoneyAmount(body.monthlyTarget);
+    if (t === null || t < 0) {
       return NextResponse.json(
         { error: "monthlyTarget must be a non-negative number" },
         { status: 400 }

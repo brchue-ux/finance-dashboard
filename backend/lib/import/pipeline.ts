@@ -16,6 +16,7 @@ import { categorize, rulesForRow } from "@/lib/categorization";
 import { loadCategorizationContext } from "@/lib/budget/categorization-context";
 import { matchesTransferPattern } from "@/lib/budget/transfers";
 import { resolveImportCategory } from "@/lib/import/category-match";
+import { coerceMoneyAmount } from "@/lib/request-body";
 
 export interface NormalizedRow {
   date: string; // ISO 8601 YYYY-MM-DD
@@ -94,8 +95,11 @@ export function normalizeMappedRows(
     // reporting (e.g. a "Total" row has description+amount but no date).
     if (!rawDate && !rawDesc && !rawAmount) continue;
     const date = parseGridDate(rawDate);
-    const amount = parseGridAmount(rawAmount);
-    if (Number.isNaN(date.getTime()) || Number.isNaN(amount)) {
+    // Range-checked, not merely NaN-checked: an absurd cell ("1e300") parses to
+    // a finite number and then throws at the money seam, which surfaces as a 500
+    // for the whole import rather than as one bad row the user can fix.
+    const amount = coerceMoneyAmount(parseGridAmount(rawAmount));
+    if (Number.isNaN(date.getTime()) || amount === null) {
       // Include the description so the user can find the row in their sheet.
       errors.push(
         `row ${i + 1}${rawDesc ? ` ("${rawDesc}")` : ""}: unparseable date "${rawDate}" or amount "${r[amountIdx]}"`

@@ -11,6 +11,7 @@ import {
   CENTS_PER_DOLLAR,
   fromCents,
   fromCentsOrNull,
+  isWholeCents,
   moneyCents,
   toCents,
   toCentsOrNull,
@@ -136,6 +137,28 @@ describe("nullable helpers", () => {
   it("converts a present value exactly as the non-null helpers do", () => {
     expect(toCentsOrNull(-12.34)).toBe(-1234);
     expect(fromCentsOrNull(-1234)).toBe(-12.34);
+  });
+});
+
+describe("isWholeCents", () => {
+  it("accepts amounts the ledger can store exactly", () => {
+    for (const v of [0, 1, -1, 12.34, -12.34, 0.01, -0.01, 1000000.99]) {
+      expect(isWholeCents(v)).toBe(true);
+    }
+  });
+
+  it("rejects sub-cent amounts, including the half-cent boundary", () => {
+    for (const v of [1.005, -1.005, 0.001, -0.001, 5.0049, 10.005]) {
+      expect(isWholeCents(v)).toBe(false);
+    }
+  });
+
+  it("agrees with the module's own rounding rule rather than a second one", () => {
+    // Whatever toCents produces is by definition storable; the predicate must
+    // never contradict it.
+    for (const v of [0.07, 2.675, -2.675, 99.99]) {
+      expect(isWholeCents(fromCents(toCents(v)))).toBe(true);
+    }
   });
 });
 

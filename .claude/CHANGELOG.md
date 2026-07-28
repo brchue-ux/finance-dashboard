@@ -20,6 +20,65 @@ Two silent-data-loss incidents happened in ONE night against the REAL database. 
 2. **Direct-sqlite3 writes made near a server kill can vanish with the WAL.** Two deletes verified at the time ("remaining: 0") silently resurrected after the dev→prod server swap — the WAL holding them died with the killed process. **Protocol: direct DB surgery only against a STABLE server (not one about to be killed/swapped); `PRAGMA wal_checkpoint(TRUNCATE)` after writing; re-verify through the RUNNING SERVER'S API, not just a fresh sqlite3 read. Any verification done before a process transition (kill, restart, migration, swap) is STALE — re-verify after.**
 3. Corollary already proven twice: a probe that "can't happen" (a dedup reporting duplicates of deleted rows) is evidence, not noise — chase it before building on top.
 
+## 2026-07-28 — Ledger money stored as integer cents, part 1 of 2 (`fm/budget-cents`)
+
+- **The ten money columns in `backend/db/money-columns.ts` now store integer cents.** Float
+  dollars drift, and the headline invariant (`totalIncome − totalOutflow` equalling actual
+  account movement) is exactly the running sum drift breaks once a database holds thousands of
+  rows. Scope was deliberately narrow: share quantities, per-share and market prices,
+  percentages, and derived portfolio valuations stay `real` — they are fractional or estimates,
+  and a two-decimal grid would be a bug there rather than a fix. `portfolio_transactions.amount`
+  is arguably ledger money but was left alone and flagged; it shares no read path with anything
+  converted.
+- **`backend/lib/money.ts` is the one conversion seam.** Its `moneyCents` drizzle `customType`
+  is what `db/schema.ts` declares the columns with, so conversion happens at the driver boundary
+  — `select`, `insert`, `update`, `returning()`, and the bound operands of `eq`/`lt`/`gt`/
+  `inArray`, with nulls bypassing both mappers. Net effect: **zero call sites changed**; callers
+  above `db/` still speak dollars. That is part 1. Part 2 (cents outward through calculation,
+  display and entry) is a separate later task, which is why budget arithmetic is still float
+  dollars above `db/`.
+- Rounding rule, decided once: **half away from zero, evaluated on the decimal string** via a
+  decimal shift, not `Math.round` — `Math.round(1.005 * 100)` is 100, because the double nearest
+  1.005 sits below it. Symmetric rounding also preserves the ledger's sign convention. The seam
+  assumes a two-decimal minor unit, which holds for CAD/USD/EUR; a zero- or three-decimal
+  currency would need the scale chosen per `iso_currency_code`, and the module comment says so.
+- `toCents` throws on non-finite input and `fromCents` throws on a non-integer, on purpose: the
+  latter is the "this column was never migrated" alarm, and a loud failure beats rendering every
+  figure 100× too small.
+- **⚠ Deploy ordering is mandatory, and it bit nothing only because nothing has been migrated
+  yet.** `db/migrate-money-to-cents.ts` must run against a database BEFORE this code or a
+  `drizzle-kit push` of the new schema reaches it. A push sets the declared column type without
+  converting any value, and that declared type is the migration's idempotency marker — so
+  migrating second would print "nothing to do" over columns full of dollars, after which a
+  whole-dollar row reads 100× too small **without any error**, because it is a valid integer.
+  The survey loop now probes an already-INTEGER table for fractional values and refuses to skip
+  it, naming push-first ordering as the cause; that probe cannot see whole-dollar rows, so the
+  ordering itself remains the real protection.
+- Migration (`db/migrate-money-to-cents.ts`): dry-run by default, refuses to run without
+  `--confirm`, one transaction, idempotent, rebuilds each table because SQLite cannot ALTER a
+  column's type, and derives the new DDL from the database's own `sqlite_master` entry so live
+  constraints survive verbatim. Reads in keyset pages over `id` and batches each page's updates
+  — `drizzle.config.ts` uses the "turso" dialect, so `DATABASE_URL` may be remote.
+  `db/verify-money-cents.ts --before <backup>` proves the result (row counts across ALL tables,
+  declared types, exact per-row check against the rounding rule, per-column totals) and merge-
+  walks the two databases in `id` order rather than holding both in memory. It requires the
+  pre-migration backup by design — the proof is impossible without the values it started from.
+- **Sub-cent input is now rejected, not quantized.** Storage quantizes each row independently, so
+  splits of -5.005 and -4.995 passed `validateSplits` (they sum to -10.00) and then stored as
+  -501¢ and -500¢, no longer summing to their parent; a 0.005 reallocation rounded one side down
+  and the other up, creating a cent out of nothing. Both validators now refuse a non-whole-cent
+  amount with the existing 400. `SPLIT_SUM_EPSILON` was NOT widened and the sum-vs-parent check
+  is unchanged — this is an added precondition. Same house style as `fromCents` throwing.
+- Money fields on write routes are bounded via `coerceMoneyAmount` in `lib/request-body.ts`, so
+  an absurd magnitude is a 400 instead of an unhandled 500 from `toCents`' RangeError (that
+  throw stays as the last line of defence). The import pipeline range-checks parsed amounts the
+  same way, so one bad cell is a row error rather than a failed import. Create/replace responses
+  echo the **persisted** value via `returning()`, so an optimistic client can't hold a figure the
+  next read disagrees with by a cent.
+- Per the DB safety protocol: all work was done against scratch/test databases. **The migration
+  has NOT been run against the real database** — that is a separate supervised, backed-up
+  operation the owner owns.
+
 ## 2026-07-27 — First CI workflow (`fm/budget-ci`)
 
 - **`.github/workflows/ci.yml` — the repo's first GitHub Actions workflow.** Runs on
