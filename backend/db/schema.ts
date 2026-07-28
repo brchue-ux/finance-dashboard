@@ -603,9 +603,12 @@ export const bankBalanceSnapshots = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id),
-    balanceAvailable: real("balance_available"),
-    balanceCurrent: real("balance_current"),
-    balanceLimit: real("balance_limit"),
+    // Integer cents, same as bank_accounts.balance_* — the two are written by
+    // one sync and read into one net-worth series, so they cannot disagree about
+    // their unit. See db/money-columns.ts.
+    balanceAvailable: moneyCents("balance_available"),
+    balanceCurrent: moneyCents("balance_current"),
+    balanceLimit: moneyCents("balance_limit"),
     isoCurrencyCode: text("iso_currency_code"),
     capturedAt: integer("captured_at").notNull(),
   },

@@ -42,8 +42,8 @@ touched it — check whether any server of yours was running at that mtime befor
 ## Ledger money is integer cents in the DB, dollars in TypeScript
 
 `backend/lib/money.ts` is the ONE conversion seam, and `moneyCents` — the drizzle custom column
-type it exports — is how the five ledger-money columns (listed in `backend/db/money-columns.ts`)
-are declared in `db/schema.ts`. Consequences worth knowing before you touch a money path:
+type it exports — is how the ledger-money columns (listed in `backend/db/money-columns.ts`) are
+declared in `db/schema.ts`. Consequences worth knowing before you touch a money path:
 
 - **Do not write `Math.round(x * 100)` at a call site.** The rounding rule (half away from zero,
   evaluated on the decimal string so `$1.005` does not silently become 100¢) lives in `toCents`.
@@ -58,8 +58,11 @@ are declared in `db/schema.ts`. Consequences worth knowing before you touch a mo
   it is meant to be loud rather than to render every figure 100× too small.
 - Most of the schema's other `real` columns are NOT money-in-cents — share quantities, per-share
   and market prices, percentages, and derived portfolio valuations are fractional or estimates.
-  `db/money-columns.ts` says which columns are in scope and why. `bank_balance_snapshots.balance_*`
-  is genuinely ledger money and is still `real` — a deliberate, unfinished exception.
+  `db/money-columns.ts` says which columns are in scope and why.
+- **`bank_accounts.balance_*` and `bank_balance_snapshots.balance_*` must always share a unit.**
+  One Plaid sync writes both and the net-worth series reads both; the snapshot table is
+  append-only, so a period where they disagreed could not be recomputed afterwards. If either ever
+  changes representation again, both change in the same migration.
 
 Migrating an existing database is `db/migrate-money-to-cents.ts` (dry-run by default, one
 transaction, idempotent, rebuilds each table because SQLite cannot ALTER a column's type), and

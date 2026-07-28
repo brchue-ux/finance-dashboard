@@ -1,8 +1,11 @@
 import { createClient } from "@libsql/client";
-import { eq, gt, isNull, lt } from "drizzle-orm";
+import { eq, getTableColumns, getTableName, gt, is, isNull, lt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql";
-import { sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { SQLiteTable, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
+
+import { MONEY_COLUMNS } from "@/db/money-columns";
+import * as schema from "@/db/schema";
 
 import {
   CENTS_PER_DOLLAR,
@@ -228,6 +231,60 @@ describe("moneyCents column type", () => {
     );
     const total = (await client.execute("select sum(amount) as s from ledger")).rows[0].s;
     expect(fromCents(Number(total))).toBe(-1);
+  });
+});
+
+// `db/money-columns.ts` drives the migration and the verification script, while
+// `db/schema.ts` drives the running app. Nothing but these assertions stops the
+// two from disagreeing — and a column listed in one but not the other is either
+// data the migration silently skips or a column the app reads 100× wrong.
+describe("schema and the migration's column list agree", () => {
+  // `schema` also exports relations objects, so the values are widened to
+  // unknown before narrowing — a predicate over the exported union cannot
+  // express "one of these many table types".
+  const schemaExports: unknown[] = Object.values(schema);
+  const tables = schemaExports.filter((v): v is SQLiteTable => is(v, SQLiteTable));
+
+  const moneyColumnsInSchema = tables
+    .flatMap((table) =>
+      Object.values(getTableColumns(table))
+        .filter((c) => c.columnType === "SQLiteCustomColumn")
+        .map((c) => `${getTableName(table)}.${c.name}`)
+    )
+    .sort();
+
+  const moneyColumnsDeclared = MONEY_COLUMNS.flatMap(({ table, columns }) =>
+    columns.map((c) => `${table}.${c}`)
+  ).sort();
+
+  it("declares exactly the listed columns with the money seam", () => {
+    expect(moneyColumnsInSchema).toEqual(moneyColumnsDeclared);
+  });
+
+  it("stores every one of them as integer cents", () => {
+    const sqlTypes = tables.flatMap((table) =>
+      Object.values(getTableColumns(table))
+        .filter((c) => c.columnType === "SQLiteCustomColumn")
+        .map((c) => c.getSQLType())
+    );
+    expect(sqlTypes).toHaveLength(moneyColumnsDeclared.length);
+    expect([...new Set(sqlTypes)]).toEqual(["integer"]);
+  });
+
+  // The two tables are written by one Plaid sync and read into one net-worth
+  // series, and the snapshot table is append-only — a period where they
+  // disagreed about their unit could never be recomputed.
+  it("keeps bank_accounts and bank_balance_snapshots on the same unit", () => {
+    const balanceColumns = (table: SQLiteTable) =>
+      Object.values(getTableColumns(table))
+        .filter((c) => c.name.startsWith("balance_"))
+        .map((c) => `${c.name}:${c.columnType}`)
+        .sort();
+
+    expect(balanceColumns(schema.bankBalanceSnapshots)).toEqual(
+      balanceColumns(schema.bankAccounts)
+    );
+    expect(balanceColumns(schema.bankAccounts)).toHaveLength(3);
   });
 });
 
