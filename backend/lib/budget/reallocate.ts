@@ -12,6 +12,8 @@
  * or destroys it. `from` loses exactly what `to` gains, which is why both
  * upserts have to land in one transaction.
  */
+import { isWholeCents } from "../money";
+import { coerceMoneyAmount } from "../request-body";
 
 export interface EnvelopeRow {
   id: string;
@@ -63,13 +65,20 @@ export function planReallocation(params: {
 }): ReallocationResult {
   const fromName = typeof params.fromName === "string" ? params.fromName.trim() : "";
   const toName = typeof params.toName === "string" ? params.toName.trim() : "";
-  const amount = Number(params.amount);
+  const amount = coerceMoneyAmount(params.amount);
 
   if (!fromName || !toName) {
     return { ok: false, error: "envelope_from and envelope_to are required" };
   }
-  if (!Number.isFinite(amount) || amount <= 0) {
+  if (amount === null || amount <= 0) {
     return { ok: false, error: "amount must be a positive number" };
+  }
+  // Conservation is the whole point of a reallocation, and storage quantizes
+  // each side independently: moving half a cent leaves `from` rounded down and
+  // `to` rounded up, so the total budgeted grows by a cent out of nothing. A
+  // sub-cent move cannot be represented, so it is refused rather than rounded.
+  if (!isWholeCents(amount)) {
+    return { ok: false, error: `amount ${amount} is not a whole number of cents` };
   }
 
   const from = findByName(params.envelopes, fromName);

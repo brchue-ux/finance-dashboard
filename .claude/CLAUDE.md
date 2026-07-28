@@ -44,7 +44,11 @@ heap in `backend`'s build script is a ceiling, not a requirement. Detail: `AGENT
 OAuth callbacks log the provider's error server-side (sanitized) and reflect **nothing** back to
 the browser; HTML escaping lives in `lib/close-page.ts`. Money-write routes (transaction update,
 splits, allocations/reallocate) gate body shape and integer coercion through `lib/request-body.ts`
-— `Number([]) === 0` passes `Number.isInteger`, which once wrote allocations for year 0. Route new
+— `Number([]) === 0` passes `Number.isInteger`, which once wrote allocations for year 0. Dollar
+amounts go through `coerceMoneyAmount` (same permissiveness trap, plus a magnitude bound so an
+absurd figure is a 400 rather than a 500 from `toCents`), and a **non-whole-cent amount is
+rejected with a 400, never silently quantized** (`isWholeCents` in `lib/money.ts`; storage
+quantizes each row on its own, so sub-cent splits stop summing to their parent). Route new
 handlers through these helpers rather than re-deriving them. Why, in `.claude/CHANGELOG.md`.
 
 **Expo web is a supported target** — sign-in and all nine gradient-title screens verified in a
@@ -71,9 +75,23 @@ category" row; the Expo-web target fixes; and the unified connection-status UI, 
 **deliberate** user-visible hue change ("Live" on Settings and System status moved from
 `COLORS.success` to the softer `COLORS.moneyIn`) — intended, not a refactor slip.
 
-**Approved but NOT started:** migrating money storage from floating point to **integer cents**
-(amounts are `real` columns in `backend/db/schema.ts`). The user has approved this; it is planned
-work, not an open question — don't re-litigate it, and don't start it unprompted.
+**Ledger money is stored as integer cents** (part 1 of 2, branch `fm/budget-cents`). The ten
+money columns listed in `backend/db/money-columns.ts` are declared `integer` and hold cents;
+`backend/lib/money.ts` is the one conversion seam, and its `moneyCents` drizzle column type
+converts at the driver boundary, so **callers above `db/` still work in dollars**. Part 2 —
+pushing cents outward through calculation, display and entry — is separate, later, and not
+started. Sharp edges (the rounding rule, `fromCents` throwing on a non-integer, which `real`
+columns are deliberately NOT money) are in the root `AGENTS.md`.
+
+**⚠ Ordering is mandatory when this reaches a database with data in it:** run
+`backend/db/migrate-money-to-cents.ts` against that database **BEFORE** the new schema does —
+before deploying this code, and before any `drizzle-kit push`. A push sets the declared column
+type without converting a single value, which is the migration's own idempotency marker, so
+migrating afterwards would report "nothing to do" over columns still holding dollars. The
+migration now probes for that and refuses, but the probe cannot see a whole-dollar row, so the
+order is the real protection. Back up first, then prove the result with
+`backend/db/verify-money-cents.ts --before <backup>` — it requires the pre-migration copy by
+design.
 
 **Known-open issue — port 3001 vs 3011.** The documented and deployed port is **3011**, but
 `backend/package.json`'s `dev`/`start` scripts and both `.env.example` files still say 3001.
@@ -97,7 +115,11 @@ Full detail, every commit hash, and every fixed bug for the above: `.claude/CHAN
 - **Never mark the frontend verified without an explicit user OK.** "User said commit/push" is
   NOT "user confirmed it works."
 - **Rules are SCOPED, not catch-all.** Region/currency is a keep-door-open constraint — no
-  hardcoded CAD assumptions in new code (single-user Canadian today, but not a hard dependency).
+  hardcoded CAD assumptions in new code. Single-user Canadian is the *development* posture only;
+  the schema is already multi-tenant and the target regions are Canada and the USA with the EU a
+  door left open. CAD/USD/EUR are all two-decimal, which is why the money seam's
+  `CENTS_PER_DOLLAR` is a constant — a zero- or three-decimal currency would need the scale
+  chosen per `iso_currency_code` (`backend/lib/money.ts` says so at the definition).
 - **RN lesson:** never use a `flex: 1` root in a content-sized (`maxHeight`-only) bottom sheet —
   it collapses to zero height. Size to content, bound any inner ScrollView.
 

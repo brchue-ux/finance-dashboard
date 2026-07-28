@@ -18,6 +18,13 @@ describe("autoCardInstruction", () => {
     expect(budget).toContain("Never invent an envelope");
   });
 
+  it("tells the budget view an action amount must be a whole number of cents", () => {
+    // planReallocation rejects a sub-cent amount with a 400, so a card the model
+    // proposes at 33.333 would fail only once the user pressed Approve.
+    expect(budget).toContain("whole number of cents");
+    expect(budget).toContain("at most two decimal places");
+  });
+
   it("never mentions envelopes to the portfolio view", () => {
     expect(portfolio).not.toContain("envelope_from");
     expect(portfolio).not.toContain("envelope_to");

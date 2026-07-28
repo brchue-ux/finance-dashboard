@@ -39,6 +39,43 @@ touched it — check whether any server of yours was running at that mtime befor
 - Never run `npm run build` in `backend/` while a `next dev` is live — they share `.next` and the
   dev server breaks with a webpack chunk mismatch.
 
+## Ledger money is integer cents in the DB, dollars in TypeScript
+
+`backend/lib/money.ts` is the ONE conversion seam, and `moneyCents` — the drizzle custom column
+type it exports — is how the ledger-money columns (listed in `backend/db/money-columns.ts`) are
+declared in `db/schema.ts`. Consequences worth knowing before you touch a money path:
+
+- **Do not write `Math.round(x * 100)` at a call site.** The rounding rule (half away from zero,
+  evaluated on the decimal string so `$1.005` does not silently become 100¢) lives in `toCents`.
+- **Callers above `db/` still work in dollars.** Reads come back as dollars and writes take
+  dollars, because the mappers run at the driver boundary — including on `eq`/`lt`/`gt`/`inArray`
+  operands and on `returning()`. Nulls bypass both mappers. This is deliberate: converting the
+  *arithmetic and display* to cents is a separate, later piece of work.
+- **The one thing the seam cannot cover is a hand-written `sql` fragment naming a money column** —
+  raw SQL yields raw cents. There are none today (all summing happens in TypeScript); if you add
+  one, convert its result with `fromCents`.
+- **`fromCents` throws on a non-integer.** That is the "this column was never migrated" alarm, and
+  it is meant to be loud rather than to render every figure 100× too small.
+- Most of the schema's other `real` columns are NOT money-in-cents — share quantities, per-share
+  and market prices, percentages, and derived portfolio valuations are fractional or estimates.
+  `db/money-columns.ts` says which columns are in scope and why.
+- **`bank_accounts.balance_*` and `bank_balance_snapshots.balance_*` must always share a unit.**
+  One Plaid sync writes both and the net-worth series reads both; the snapshot table is
+  append-only, so a period where they disagreed could not be recomputed afterwards. If either ever
+  changes representation again, both change in the same migration.
+
+**Order matters when this meets a database with data in it:** migrate BEFORE the new schema
+arrives (a deploy, or a `drizzle-kit push`). A push sets the declared column type without
+converting a value, and that type is the migration's idempotency marker, so migrating afterwards
+skips columns still holding dollars. The migration probes for that and refuses, but the probe
+cannot see a whole-dollar row — the ordering is the real protection.
+
+Migrating an existing database is `db/migrate-money-to-cents.ts` (dry-run by default, one
+transaction, idempotent, rebuilds each table because SQLite cannot ALTER a column's type), and
+`db/verify-money-cents.ts --before <backup.db>` proves it — per-table row counts across ALL tables,
+declared types, and an exact per-row check against the rounding rule. Take the backup first: the
+verification is impossible without the values it started from.
+
 ## Tests
 
 - `npm test` at the root runs **both** workspaces: `backend` and `frontend`. Do not record a total
