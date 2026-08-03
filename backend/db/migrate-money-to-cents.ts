@@ -434,22 +434,36 @@ async function main() {
     fail(`migration rolled back, database unchanged: ${err instanceof Error ? err.message : err}`);
   }
 
-  await client.execute("pragma legacy_alter_table = off");
-  await client.execute("pragma foreign_keys = on");
-
-  // Reclaim the pages the rebuild orphaned, and make sure everything is on disk
-  // rather than sitting in the WAL (see the DB safety protocol). This runs AFTER
-  // the commit, so a failure here is housekeeping that did not happen — the
-  // conversion itself is already durable. Say so precisely: reported as a failed
-  // migration it would invite a restore-from-backup that destroys good data.
+  // Everything below runs AFTER the commit: the pragma resets, the reclaim (which
+  // frees the pages the rebuild orphaned and gets everything on disk rather than
+  // sitting in the WAL — see the DB safety protocol), and closing the connection.
+  // A failure in any of them is housekeeping that did not happen; the conversion
+  // itself is already durable. Nothing here may report the migration as failed —
+  // that wording would invite a restore-from-backup that destroys good data.
+  let housekeepingError: unknown;
   try {
+    await client.execute("pragma legacy_alter_table = off");
+    await client.execute("pragma foreign_keys = on");
     await client.execute("vacuum");
     await client.execute("pragma wal_checkpoint(truncate)");
   } catch (err) {
-    await client.close();
+    housekeepingError = err;
+  } finally {
+    try {
+      await client.close();
+    } catch (err) {
+      housekeepingError ??= err;
+    }
+  }
+
+  if (housekeepingError) {
     console.warn(
-      `\n  ⚠ Migration COMMITTED successfully. Only the post-commit page reclaim failed: ` +
-        `${err instanceof Error ? err.message : err}\n` +
+      `\n  ⚠ Migration COMMITTED successfully. Only post-commit housekeeping failed: ` +
+        `${
+          housekeepingError instanceof Error
+            ? housekeepingError.message
+            : housekeepingError
+        }\n` +
         `  The converted data is intact — do NOT restore from backup. The database may hold\n` +
         `  orphaned pages and an un-checkpointed WAL; re-run "vacuum" and\n` +
         `  "pragma wal_checkpoint(truncate)" against it when convenient. Then prove the\n` +
@@ -458,7 +472,6 @@ async function main() {
     );
     return;
   }
-  await client.close();
 
   console.log("\n  Migration applied. Now prove it:\n" + VERIFY_NEXT_STEP);
 }
