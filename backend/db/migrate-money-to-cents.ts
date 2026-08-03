@@ -1,5 +1,5 @@
 /**
- * One-shot migration: the five ledger-money columns move from floating-point
+ * One-shot migration: the ten ledger-money columns, across six tables, move from floating-point
  * dollars to integer cents. See `lib/money.ts` for the seam this lands on and
  * `db/money-columns.ts` for exactly which columns are in scope.
  *
@@ -68,6 +68,9 @@ const TEMP_PREFIX = "__cents_migration_";
 const PAGE_SIZE = 500;
 
 type ColumnState = { column: string; declaredType: string; alreadyCents: boolean };
+
+const VERIFY_NEXT_STEP =
+  "    npx tsx --env-file=.env.local db/verify-money-cents.ts --before <pre-migration-backup.db>\n";
 
 function fail(message: string): never {
   console.error(`\n✗ ${message}\n`);
@@ -294,7 +297,7 @@ async function main() {
   if (!dryRun && !confirmed) {
     fail(
       "refusing to run without an explicit mode. Pass --dry-run to preview, or --confirm to apply.\n" +
-        "  Back the database up first: this rewrites five tables."
+        "  Back the database up first: this rewrites six tables."
     );
   }
 
@@ -371,13 +374,32 @@ async function main() {
   await client.execute("pragma foreign_keys = off");
   await client.execute("pragma legacy_alter_table = on");
 
+  // Read every table's schema BEFORE opening the write transaction. These run on
+  // `client` — a second connection — so once the transaction escalates to an
+  // EXCLUSIVE lock they would fail with "database is locked". In rollback-journal
+  // mode that escalation happens as soon as the transaction's dirty pages spill to
+  // the journal, which any database large enough reaches partway through the run.
+  // Each table's DDL is unchanged until its own rebuild, so reading them all up
+  // front is equivalent to reading each one inside the loop.
+  const schemaByTable = new Map<
+    string,
+    { ddl: string; indexDdl: string[]; columnNames: string[] }
+  >();
+  for (const p of todo) {
+    const ddl = await tableDdl(client, p.table);
+    const indexDdl = await tableIndexDdl(client, p.table);
+    const info = await client.execute(`pragma table_info(${quoteIdent(p.table)})`);
+    schemaByTable.set(p.table, {
+      ddl,
+      indexDdl,
+      columnNames: info.rows.map((r) => String(r.name)),
+    });
+  }
+
   const tx = await client.transaction("write");
   try {
     for (const p of todo) {
-      const ddl = await tableDdl(client, p.table);
-      const indexDdl = await tableIndexDdl(client, p.table);
-      const info = await client.execute(`pragma table_info(${quoteIdent(p.table)})`);
-      const columnNames = info.rows.map((r) => String(r.name));
+      const { ddl, indexDdl, columnNames } = schemaByTable.get(p.table)!;
 
       const stats = await convertValues(tx, p.table, p.columns);
       await rebuildTable(
@@ -416,15 +438,29 @@ async function main() {
   await client.execute("pragma foreign_keys = on");
 
   // Reclaim the pages the rebuild orphaned, and make sure everything is on disk
-  // rather than sitting in the WAL (see the DB safety protocol).
-  await client.execute("vacuum");
-  await client.execute("pragma wal_checkpoint(truncate)");
+  // rather than sitting in the WAL (see the DB safety protocol). This runs AFTER
+  // the commit, so a failure here is housekeeping that did not happen — the
+  // conversion itself is already durable. Say so precisely: reported as a failed
+  // migration it would invite a restore-from-backup that destroys good data.
+  try {
+    await client.execute("vacuum");
+    await client.execute("pragma wal_checkpoint(truncate)");
+  } catch (err) {
+    await client.close();
+    console.warn(
+      `\n  ⚠ Migration COMMITTED successfully. Only the post-commit page reclaim failed: ` +
+        `${err instanceof Error ? err.message : err}\n` +
+        `  The converted data is intact — do NOT restore from backup. The database may hold\n` +
+        `  orphaned pages and an un-checkpointed WAL; re-run "vacuum" and\n` +
+        `  "pragma wal_checkpoint(truncate)" against it when convenient. Then prove the\n` +
+        `  migration as below.\n` +
+        VERIFY_NEXT_STEP
+    );
+    return;
+  }
   await client.close();
 
-  console.log(
-    "\n  Migration applied. Now prove it:\n" +
-      "    npx tsx --env-file=.env.local db/verify-money-cents.ts --before <pre-migration-backup.db>\n"
-  );
+  console.log("\n  Migration applied. Now prove it:\n" + VERIFY_NEXT_STEP);
 }
 
 main().catch((err) => fail(err instanceof Error ? (err.stack ?? err.message) : String(err)));
