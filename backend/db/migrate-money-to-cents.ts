@@ -1,5 +1,5 @@
 /**
- * One-shot migration: the five ledger-money columns move from floating-point
+ * One-shot migration: the ten ledger-money columns, across six tables, move from floating-point
  * dollars to integer cents. See `lib/money.ts` for the seam this lands on and
  * `db/money-columns.ts` for exactly which columns are in scope.
  *
@@ -33,6 +33,11 @@
  * with only the money columns' type token rewritten, so whatever the live
  * schema actually has — constraints, defaults, columns added since — survives
  * verbatim instead of being replaced by this file's idea of it.
+ *
+ * Only the post-commit housekeeping — the pragma resets, the vacuum and the WAL
+ * checkpoint — sits outside that transaction. If it fails the conversion is
+ * already committed, so the script reports a housekeeping warning and exits 0
+ * rather than wording it as a failure that would invite a destructive restore.
  *
  * Idempotent: a table whose money columns are already declared INTEGER is
  * skipped. That marker is only set in phase B, and phases A and B share a
@@ -68,6 +73,9 @@ const TEMP_PREFIX = "__cents_migration_";
 const PAGE_SIZE = 500;
 
 type ColumnState = { column: string; declaredType: string; alreadyCents: boolean };
+
+const VERIFY_NEXT_STEP =
+  "    npx tsx --env-file=.env.local db/verify-money-cents.ts --before <pre-migration-backup.db>\n";
 
 function fail(message: string): never {
   console.error(`\n✗ ${message}\n`);
@@ -294,7 +302,7 @@ async function main() {
   if (!dryRun && !confirmed) {
     fail(
       "refusing to run without an explicit mode. Pass --dry-run to preview, or --confirm to apply.\n" +
-        "  Back the database up first: this rewrites five tables."
+        "  Back the database up first: this rewrites six tables."
     );
   }
 
@@ -371,13 +379,32 @@ async function main() {
   await client.execute("pragma foreign_keys = off");
   await client.execute("pragma legacy_alter_table = on");
 
+  // Read every table's schema BEFORE opening the write transaction. These run on
+  // `client` — a second connection — so once the transaction escalates to an
+  // EXCLUSIVE lock they would fail with "database is locked". In rollback-journal
+  // mode that escalation happens as soon as the transaction's dirty pages spill to
+  // the journal, which any database large enough reaches partway through the run.
+  // Each table's DDL is unchanged until its own rebuild, so reading them all up
+  // front is equivalent to reading each one inside the loop.
+  const schemaByTable = new Map<
+    string,
+    { ddl: string; indexDdl: string[]; columnNames: string[] }
+  >();
+  for (const p of todo) {
+    const ddl = await tableDdl(client, p.table);
+    const indexDdl = await tableIndexDdl(client, p.table);
+    const info = await client.execute(`pragma table_info(${quoteIdent(p.table)})`);
+    schemaByTable.set(p.table, {
+      ddl,
+      indexDdl,
+      columnNames: info.rows.map((r) => String(r.name)),
+    });
+  }
+
   const tx = await client.transaction("write");
   try {
     for (const p of todo) {
-      const ddl = await tableDdl(client, p.table);
-      const indexDdl = await tableIndexDdl(client, p.table);
-      const info = await client.execute(`pragma table_info(${quoteIdent(p.table)})`);
-      const columnNames = info.rows.map((r) => String(r.name));
+      const { ddl, indexDdl, columnNames } = schemaByTable.get(p.table)!;
 
       const stats = await convertValues(tx, p.table, p.columns);
       await rebuildTable(
@@ -412,19 +439,46 @@ async function main() {
     fail(`migration rolled back, database unchanged: ${err instanceof Error ? err.message : err}`);
   }
 
-  await client.execute("pragma legacy_alter_table = off");
-  await client.execute("pragma foreign_keys = on");
+  // Everything below runs AFTER the commit: the pragma resets, the reclaim (which
+  // frees the pages the rebuild orphaned and gets everything on disk rather than
+  // sitting in the WAL — see the DB safety protocol), and closing the connection.
+  // A failure in any of them is housekeeping that did not happen; the conversion
+  // itself is already durable. Nothing here may report the migration as failed —
+  // that wording would invite a restore-from-backup that destroys good data.
+  let housekeepingError: unknown;
+  try {
+    await client.execute("pragma legacy_alter_table = off");
+    await client.execute("pragma foreign_keys = on");
+    await client.execute("vacuum");
+    await client.execute("pragma wal_checkpoint(truncate)");
+  } catch (err) {
+    housekeepingError = err;
+  } finally {
+    try {
+      await client.close();
+    } catch (err) {
+      housekeepingError ??= err;
+    }
+  }
 
-  // Reclaim the pages the rebuild orphaned, and make sure everything is on disk
-  // rather than sitting in the WAL (see the DB safety protocol).
-  await client.execute("vacuum");
-  await client.execute("pragma wal_checkpoint(truncate)");
-  await client.close();
+  if (housekeepingError) {
+    console.warn(
+      `\n  ⚠ Migration COMMITTED successfully. Only post-commit housekeeping failed: ` +
+        `${
+          housekeepingError instanceof Error
+            ? housekeepingError.message
+            : housekeepingError
+        }\n` +
+        `  The converted data is intact — do NOT restore from backup. The database may hold\n` +
+        `  orphaned pages and an un-checkpointed WAL; re-run "vacuum" and\n` +
+        `  "pragma wal_checkpoint(truncate)" against it when convenient. Then prove the\n` +
+        `  migration as below.\n` +
+        VERIFY_NEXT_STEP
+    );
+    return;
+  }
 
-  console.log(
-    "\n  Migration applied. Now prove it:\n" +
-      "    npx tsx --env-file=.env.local db/verify-money-cents.ts --before <pre-migration-backup.db>\n"
-  );
+  console.log("\n  Migration applied. Now prove it:\n" + VERIFY_NEXT_STEP);
 }
 
 main().catch((err) => fail(err instanceof Error ? (err.stack ?? err.message) : String(err)));

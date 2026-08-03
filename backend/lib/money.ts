@@ -1,11 +1,11 @@
 /**
  * The backend money seam — the ONE place dollars become storage and back.
  *
- * Ledger money is stored as **integer cents** (`db/schema.ts`, the five money
- * columns). Floating-point dollars drift, and the app's headline invariant —
- * `totalIncome − totalOutflow` equalling actual account movement — is exactly
- * the kind of running sum that drift breaks once a database holds thousands of
- * rows.
+ * Ledger money is stored as **integer cents** (`db/schema.ts`; the columns in
+ * scope are named in `db/money-columns.ts`). Floating-point dollars drift, and
+ * the app's headline invariant — `totalIncome − totalOutflow` equalling actual
+ * account movement — is exactly the kind of running sum that drift breaks once
+ * a database holds thousands of rows.
  *
  * Callers above the database still speak **dollars**. The conversion happens at
  * the driver boundary via the `moneyCents` column type below, so a `select`
