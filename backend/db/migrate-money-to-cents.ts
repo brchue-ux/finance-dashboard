@@ -34,6 +34,11 @@
  * schema actually has — constraints, defaults, columns added since — survives
  * verbatim instead of being replaced by this file's idea of it.
  *
+ * Only the post-commit housekeeping — the pragma resets, the vacuum and the WAL
+ * checkpoint — sits outside that transaction. If it fails the conversion is
+ * already committed, so the script reports a housekeeping warning and exits 0
+ * rather than wording it as a failure that would invite a destructive restore.
+ *
  * Idempotent: a table whose money columns are already declared INTEGER is
  * skipped. That marker is only set in phase B, and phases A and B share a
  * transaction, so "converted values but still REAL" is not a reachable state.
