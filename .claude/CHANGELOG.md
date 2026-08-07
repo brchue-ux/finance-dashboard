@@ -20,6 +20,48 @@ Two silent-data-loss incidents happened in ONE night against the REAL database. 
 2. **Direct-sqlite3 writes made near a server kill can vanish with the WAL.** Two deletes verified at the time ("remaining: 0") silently resurrected after the dev→prod server swap — the WAL holding them died with the killed process. **Protocol: direct DB surgery only against a STABLE server (not one about to be killed/swapped); `PRAGMA wal_checkpoint(TRUNCATE)` after writing; re-verify through the RUNNING SERVER'S API, not just a fresh sqlite3 read. Any verification done before a process transition (kill, restart, migration, swap) is STALE — re-verify after.**
 3. Corollary already proven twice: a probe that "can't happen" (a dedup reporting duplicates of deleted rows) is evidence, not noise — chase it before building on top.
 
+## 2026-08-03 — Auto-commit Stop hook refuses unless on a real, non-default branch (`fm/budget-synccommit-main-guard`)
+
+- **`scripts/sync-commit.sh` and its byte-for-byte PowerShell twin `scripts/sync-commit.ps1` ran
+  `git add -A` + `git commit` with no branch check whatsoever**, and had therefore committed
+  straight to `main` twice (2026-07-17 and 2026-08-03) — the second diverged the primary clone
+  from origin and blocked a fleet refresh. On a repo holding real third-party financial data and
+  deliberately kept on the full validation pipeline, an unreviewed path that commits to `main` is
+  unacceptable. Both scripts now refuse in that situation, emitting the existing `systemMessage`
+  JSON channel instead of committing. **On any other branch behaviour is completely unchanged** —
+  still `git add -A`, still commits, still never pushes, same summary message.
+- **The default branch is resolved FROM the repository, never hardcoded**: `git symbolic-ref
+  --short refs/remotes/origin/HEAD`, falling back to exactly one of `main`/`master`/`trunk`
+  existing locally — two or more matches is ambiguous, hence unresolvable. **If it cannot be
+  resolved at all the hook refuses and says so** rather than guessing and committing anyway; with
+  real financial data in the tree, a loud refusal is the correct direction to fail.
+- **A detached HEAD is refused for the same reason.** A commit there is a silently lost commit,
+  and "not on a real branch" is the same hole — an explicit, deliberate inclusion, not scope creep.
+- The header comment claimed "session end"; **Stop actually fires at EVERY turn end** and only
+  stays quiet because the tree is usually clean. The comment now says so. The commit-message
+  string still reads `auto-commit: session end …` — left alone deliberately (the fix was scoped to
+  the comment, and requirement 5 was to keep emitting the same summary); rewording it is an
+  observation for a future change, not part of this one.
+- **Asked and answered: no "stand down while a validation run owns the branch" check — do not add
+  it back.** The hook is wired only in the primary checkout's gitignored local settings; pooled
+  task worktrees carry their own turn-end hook (verified); the script `cd`s to its own repo root,
+  so even a stray invocation would act on the primary checkout, never a pipeline branch; and git
+  structurally forbids the same branch being checked out in the primary checkout and a worktree at
+  once. Run-detection would be machinery guarding a condition that cannot occur.
+- `git add -A` sweeping untracked files is a known, acknowledged property of the hook, deliberately
+  left unchanged — out of scope for this fix. No redesign, no framework, no shell-test framework
+  (this repo has none, and adding one was ruled out as exactly the machinery the right-sizing bar
+  excludes).
+- **Verification: seven scenarios against throwaway git repos under a scratch temp dir**, never
+  against the primary checkout or the worktree's own tree — running it there is the exact accident
+  being fixed. All passed: clean tree silent, exit 0; dirty-plus-untracked tree on the default
+  branch refuses, emits the message, leaves the tree dirty (2 status lines), creates no commit;
+  feature branch with a dirty tree still commits as before; detached HEAD refuses, no commit;
+  unresolvable default branch refuses; the local-name fallback finds `main` when `origin/HEAD` is
+  absent and still commits on a feature branch; both `main` and `master` present is ambiguous and
+  refuses. **PowerShell is not installed on this host** (no `pwsh`/`powershell` binary), so the
+  `.ps1` twin was reviewed line-by-line against the verified bash logic but could not be executed.
+
 ## 2026-07-28 — Ledger money stored as integer cents, part 1 of 2 (`fm/budget-cents`)
 
 - **The ten money columns in `backend/db/money-columns.ts` now store integer cents.** Float
