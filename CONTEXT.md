@@ -2,8 +2,12 @@
 
 A household budgeting and net-worth app that syncs bank transactions (via Plaid) and investment
 holdings (via SnapTrade), lets a user categorize spend into their own budget envelopes, and
-reconciles what actually left the account against what got budgeted. This is a first draft —
-terms and boundaries here should be corrected by whoever owns the domain model next.
+reconciles what actually left the account against what got budgeted.
+
+This file owns the project's domain vocabulary — what each term means and where its boundary
+falls — and nothing else. Operational sharp edges (the money seam's rules, the DB-safety
+protocol, CI, worktree traps) live in `AGENTS.md`; standing product rules live in
+`.claude/CLAUDE.md`. Entries here point at those owners rather than restating them.
 
 ## Language
 
@@ -28,9 +32,9 @@ The canonical budget bucket: a named spending target (`monthlyTarget`) with matc
 auto-categorize transactions into it. Envelopes are referenced two different ways: Allocations key
 by foreign key (`envelope_allocations.envelopeId`), while transactions, splits and learned rules
 carry the envelope's _name_ as a Category string. History survives a rename only because the
-envelope PATCH route explicitly cascades the new name into all three name-carrying tables in one
-transaction — before that cascade existed, renaming an envelope holding $400 of spend reported $0.
-Any new table that stores a category name has to join that cascade.
+envelope PATCH route (`backend/app/api/budget/envelopes/[id]/route.ts`) cascades the new name
+into all three name-carrying tables in one transaction; any new table that stores a category
+name has to join that cascade or its rows silently detach on the next rename.
 _Avoid_: "Category" as a synonym for the envelope itself — Category is the string label; Envelope
 is the row carrying a target and rules. They're related but not the same concept.
 
@@ -92,18 +96,17 @@ bank accounts whose name matches Wealthsimple, and applies **only when at least 
 snapshot exists** — with no portfolio snapshot the portfolio side contributes nothing, so the
 bank-side Wealthsimple accounts still count.
 
-**Outflow**:
+**Outflow** (`totalOutflow`):
 The sum of all money that left the account — every negative transaction plus refunds netted the
-same way — computed independently of envelope categorization. This is the figure any UI surface
-labelled "Spent" must show, and the one used to compute saved amount (`income − outflow`).
-_Avoid_: "Spent" as a synonym for Outflow — see Spend below; using Spend where the standing product
-rule requires Outflow silently treats every uncategorized dollar as if it were saved.
+same way — computed independently of envelope categorization, and the one used to compute saved
+amount (`income − outflow`).
+_Avoid_: "Spent" as a synonym for Outflow — they are different figures; see Spend below.
 
 **Spend** (`totalSpent`):
-The sum of only the spend that landed in a real Envelope — it shrinks as categorization coverage
-gets worse and does not include the uncategorized remainder (`unattributedSpent`). `outflow −
-unattributedSpent === spend` is meant to hold as a checkable identity.
-_Avoid_: labelling a "Spent" surface with this figure instead of Outflow.
+The sum of only the spend that landed in a real Envelope, excluding the uncategorized remainder
+(`unattributedSpent`), so `outflow − unattributedSpent === spend`.
+_Avoid_: labelling a UI surface "Spent" with this figure — the standing product rule in
+`.claude/CLAUDE.md` requires Outflow there, and says why.
 
 **Transfer**:
 A transaction moving money between the user's own accounts, marked via a `transferSource` of
@@ -141,11 +144,10 @@ _Avoid_: treating "relink," "reconnect," and "reauth" as synonyms across provide
 distinct enum value on a distinct table.
 
 **Cents** (money seam):
-The storage representation for ledger money columns (bank balances, transaction/split amounts,
-envelope target, allocation) — integer cents in the database, converted to/from dollars at the
-single conversion seam so callers above the database layer always work in dollars. Uses a
-documented "half away from zero" rounding rule evaluated on the decimal string, not naive
-floating-point rounding. Portfolio columns (share quantities, prices, valuations) are deliberately
-excluded from this seam since they're fractional/estimated, not settled cash.
-_Avoid_: assuming every money-shaped column is in cents — only the columns enumerated in the
-money-columns list are.
+The storage representation of a *ledger money* column — integer cents in the database, converted
+to/from dollars at one seam (`backend/lib/money.ts`) so callers above the database layer always
+work in dollars. "Ledger money" is a closed set: the columns enumerated in
+`backend/db/money-columns.ts`, which also says why fractional/estimated portfolio figures are
+deliberately not in it. The seam's rules — the rounding rule, what it cannot cover, and the
+migration ordering — are in `AGENTS.md`.
+_Avoid_: assuming every money-shaped column is in cents; only that enumerated set is.
