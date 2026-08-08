@@ -8,8 +8,11 @@ terms and boundaries here should be corrected by whoever owns the domain model n
 ## Language
 
 **Transaction**:
-A single posted or pending bank-side money movement, one row per Plaid sync/import event, with a
-signed amount in cents (negative = money out, positive = money in). Distinct from a `portfolio_transaction`
+A single posted or pending bank-side money movement — one row per movement, created in bulk by a
+Plaid sync or a spreadsheet import — with a signed amount (negative = money out, positive = money
+in). Stored as integer cents, but read and written as **dollars** everywhere above the database
+layer, because the conversion happens at the driver boundary (see Cents below); a caller that
+divides `amount` by 100 has already double-converted. Distinct from a `portfolio_transaction`
 (buy/sell/dividend on the investment side), which has different sign conventions and is not stored
 in cents.
 _Avoid_: using "transaction" for investment activity — that's a Portfolio Transaction.
@@ -22,8 +25,12 @@ _Avoid_: "partial category" — the model is all-or-nothing once split.
 
 **Envelope**:
 The canonical budget bucket: a named spending target (`monthlyTarget`) with matcher rules used to
-auto-categorize transactions into it. Envelopes are referenced by name (string), not by foreign
-key, so a transaction survives an envelope rename.
+auto-categorize transactions into it. Envelopes are referenced two different ways: Allocations key
+by foreign key (`envelope_allocations.envelopeId`), while transactions, splits and learned rules
+carry the envelope's _name_ as a Category string. History survives a rename only because the
+envelope PATCH route explicitly cascades the new name into all three name-carrying tables in one
+transaction — before that cascade existed, renaming an envelope holding $400 of spend reported $0.
+Any new table that stores a category name has to join that cascade.
 _Avoid_: "Category" as a synonym for the envelope itself — Category is the string label; Envelope
 is the row carrying a target and rules. They're related but not the same concept.
 
@@ -57,9 +64,11 @@ _Avoid_: using "Account" alone when it's ambiguous whether you mean bank or inve
 **Portfolio**:
 The investment side of the app, modeled independently of bank accounts: a Wealthsimple
 Connection (via SnapTrade) produces Portfolio Snapshots, each a point-in-time total across
-account types (e.g. TFSA, RRSP, non-registered, crypto), which in turn own Holdings and Portfolio
-Transactions. Portfolio money fields are fractional (not integer cents) since they represent
-share quantities, prices, and estimated values rather than settled cash.
+account types (e.g. TFSA, RRSP, non-registered, crypto), which in turn own Holdings. Portfolio
+Transactions are NOT snapshot-owned — they hang off the user directly and are queried by `userId`
+alone; nothing in the repo writes that table today, so it is a read-only surface. Portfolio money
+fields are fractional (not integer cents) since they represent share quantities, prices, and
+estimated values rather than settled cash.
 
 **Holding**:
 A position (quantity, cost basis, market value, optional broker-reported unrealized P&L) as of one
@@ -78,9 +87,10 @@ Net Worth series over time.
 A daily series computed on the fly (not stored) by combining bank-side balances — carried forward
 from the latest applicable Balance Snapshot, with credit-type accounts counted as a negative/
 liability — plus portfolio total value, with an explicit rule excluding Wealthsimple "mirror" bank
-accounts so the same cash isn't counted on both the bank and portfolio sides. _Inferred, not
-directly confirmed in code: the exact mirror-exclusion logic was not read in full — only its
-calling comment was._
+accounts so the same cash isn't counted on both the bank and portfolio sides. The exclusion drops
+bank accounts whose name matches Wealthsimple, and applies **only when at least one portfolio
+snapshot exists** — with no portfolio snapshot the portfolio side contributes nothing, so the
+bank-side Wealthsimple accounts still count.
 
 **Outflow**:
 The sum of all money that left the account — every negative transaction plus refunds netted the
