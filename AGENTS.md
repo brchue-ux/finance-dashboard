@@ -3,8 +3,9 @@
 This file is the project's committed home for project-intrinsic agent knowledge: build, test, release, architecture, and sharp-edge notes that should travel with the code.
 
 Standing product rules, environment/credential locations and the current phase of work live in
-`.claude/CLAUDE.md`; build history lives in `.claude/CHANGELOG.md`. This file holds the sharp
-edges an agent only finds by hitting them.
+`.claude/CLAUDE.md`; build history lives in `.claude/CHANGELOG.md`; the domain vocabulary — what
+Envelope, Outflow, Transfer, Refund and the rest mean and where their boundaries fall — lives in
+`CONTEXT.md`. This file holds the sharp edges an agent only finds by hitting them.
 
 ## `.env.local` can point a throwaway server at the REAL database
 

@@ -140,6 +140,7 @@ Full detail, every commit hash, and every fixed bug for the above: `.claude/CHAN
 
 ## Reference
 
+- `CONTEXT.md` (repo root) — the domain vocabulary: what Envelope, Category, Outflow, Spend, Transfer, Refund and the rest mean and where their boundaries fall.
 - `spec.md` (what to build) and `remediation-decisions-2026-07-18.md` (why) — both in `.claude/wayfinder/`.
 - `.claude/wayfinder/build-reminders.md` — deferred items that must surface at build time or post-launch. Check before starting a build session.
 - `.claude/wayfinder/handoff-2026-07-16.md` — prior handoff doc.
