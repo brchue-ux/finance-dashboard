@@ -17,8 +17,7 @@ Plaid sync or a spreadsheet import — with a signed amount (negative = money ou
 in). Stored as integer cents, but read and written as **dollars** everywhere above the database
 layer, because the conversion happens at the driver boundary (see Cents below); a caller that
 divides `amount` by 100 has already double-converted. Distinct from a `portfolio_transaction`
-(buy/sell/dividend on the investment side), which has different sign conventions and is not stored
-in cents.
+(buy/sell/dividend on the investment side), which is not stored in cents.
 _Avoid_: using "transaction" for investment activity — that's a Portfolio Transaction.
 
 **Split**:
@@ -60,9 +59,11 @@ total budgeted — a conservation-rule operation where the "from" envelope loses
 "to" envelope gains.
 
 **Bank Account**:
-An account (chequing/savings/credit/manual) belonging to a Bank Connection (a Plaid item), the
-source of Transactions and Balance Snapshots. Modeled as an entirely separate table family from
-investment accounts — there is no shared polymorphic "account" abstraction.
+An account (chequing/savings/credit/manual) that is the source of Transactions and Balance
+Snapshots. A synced account belongs to a Bank Connection (a Plaid item); a `manual` account belongs
+to no connection and no Plaid item — both `connectionId` and `plaidAccountId` are NULL for it.
+Modeled as an entirely separate table family from investment accounts — there is no shared
+polymorphic "account" abstraction.
 _Avoid_: using "Account" alone when it's ambiguous whether you mean bank or investment side.
 
 **Portfolio**:
@@ -98,7 +99,8 @@ bank-side Wealthsimple accounts still count.
 
 **Income** (`totalIncome`):
 Money that came in over the period, counted only from budget-visible rows — Transfers and rows
-carrying Coverage are excluded before any total is taken.
+carrying Coverage are excluded before any total is taken. Refunds are excluded as well: a positive
+refund row nets against its envelope's spend rather than counting as earning (see Refund).
 
 **Outflow** (`totalOutflow`):
 The sum of all money that left the account — every negative transaction plus refunds netted the
