@@ -96,17 +96,35 @@ bank accounts whose name matches Wealthsimple, and applies **only when at least 
 snapshot exists** — with no portfolio snapshot the portfolio side contributes nothing, so the
 bank-side Wealthsimple accounts still count.
 
+**Income** (`totalIncome`):
+Money that came in over the period, counted only from budget-visible rows — Transfers and rows
+carrying Coverage are excluded before any total is taken.
+
 **Outflow** (`totalOutflow`):
 The sum of all money that left the account — every negative transaction plus refunds netted the
 same way — computed independently of envelope categorization, and the one used to compute saved
-amount (`income − outflow`).
+amount (`income − outflow`). Like Income and Spend, it sees only budget-visible rows: Transfers
+and rows carrying Coverage are filtered out first.
 _Avoid_: "Spent" as a synonym for Outflow — they are different figures; see Spend below.
 
 **Spend** (`totalSpent`):
 The sum of only the spend that landed in a real Envelope, excluding the uncategorized remainder
-(`unattributedSpent`), so `outflow − unattributedSpent === spend`.
+(`unattributedSpent`), so `outflow − unattributedSpent === spend`. Computed over the same
+budget-visible rows as Income and Outflow, so Transfers and Coverage rows are already gone.
 _Avoid_: labelling a UI surface "Spent" with this figure — the standing product rule in
 `.claude/CLAUDE.md` requires Outflow there, and says why.
+
+**Coverage**:
+A marker on a transaction saying the row sits OUTSIDE the period for which data is held from
+every account, so it is stored and categorized normally but kept out of every budget total. It is
+the second of the two reasons a row is held back from budget figures — distinct from Transfer,
+which is about the money not being earning or spending at all; a Coverage row is genuine spending
+that simply cannot be added to a month whose other accounts are missing, or the month reads as a
+fragment. The value records why the row was set aside. _Only the test seed sets this
+column today; which production path is meant to write it is inferred, not directly confirmed in
+code._
+_Avoid_: treating Coverage as a categorization or data-quality flag — it is a period-completeness
+exclusion, and it does not mean the row is wrong.
 
 **Transfer**:
 A transaction moving money between the user's own accounts, marked via a `transferSource` of
@@ -144,7 +162,7 @@ _Avoid_: treating "relink," "reconnect," and "reauth" as synonyms across provide
 distinct enum value on a distinct table.
 
 **Cents** (money seam):
-The storage representation of a *ledger money* column — integer cents in the database, converted
+The storage representation of a _ledger money_ column — integer cents in the database, converted
 to/from dollars at one seam (`backend/lib/money.ts`) so callers above the database layer always
 work in dollars. "Ledger money" is a closed set: the columns enumerated in
 `backend/db/money-columns.ts`, which also says why fractional/estimated portfolio figures are
