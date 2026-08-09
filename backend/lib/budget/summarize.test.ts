@@ -503,3 +503,54 @@ describe("canonical Spent — totalOutflow is the figure that reconciles", () =>
     expect(degraded.unattributedSpent).toBe(covered.unattributedSpent + 120);
   });
 });
+
+/**
+ * The Coverage exclusion, as CONTEXT.md's glossary states it.
+ *
+ * `budgetRows` holds a row back for two different reasons — `transferSource`
+ * and `coverage` — and the transfer half is already pinned above. This pins the
+ * other half at the same level: the glossary says a Coverage row is "stored and
+ * categorized normally but kept out of every budget total", and that Income,
+ * Outflow and Spend all see the same budget-visible rows. Both claims are only
+ * true because the filter runs once at the entry of `summarizeTotals`, so a
+ * later total added downstream of that filter cannot quietly reintroduce them.
+ */
+describe("coverage rows are outside every budget total", () => {
+  function month() {
+    return [
+      txn("Groceries", -300),
+      txn(null, -75), // uncategorized spend
+      txn(null, 2000), // paycheque
+    ];
+  }
+
+  it("adding out-of-coverage rows on both sides moves no figure", () => {
+    const rows = month();
+    const withOutOfCoverage = [
+      ...rows,
+      // Categorized and negative — would be spend — and positive — would be
+      // income — if either were inside the covered period.
+      { ...txn("Groceries", -400, "2023-04-02"), coverage: "before_bank_data" },
+      { ...txn(null, 40, "2023-04-01"), coverage: "before_bank_data" },
+    ];
+    const totals = (rs: ReturnType<typeof month>) =>
+      summarizeTotals(summarizeEnvelopes([env("Groceries", 500)], [], rs), rs);
+
+    expect(totals(withOutOfCoverage)).toEqual(totals(rows));
+  });
+
+  it("keeps every headline figure at its covered-rows-only value", () => {
+    const rows = [
+      ...month(),
+      { ...txn("Groceries", -400, "2023-04-02"), coverage: "before_bank_data" },
+      { ...txn(null, 40, "2023-04-01"), coverage: "before_bank_data" },
+    ];
+    const t = summarizeTotals(summarizeEnvelopes([env("Groceries", 500)], [], rows), rows);
+
+    expect(t.totalIncome).toBe(2000); // not 2040
+    expect(t.totalOutflow).toBe(375); // not 775
+    expect(t.totalSpent).toBe(300); // not 700
+    expect(t.unattributedSpent).toBe(75);
+    expect(t.saved).toBe(1625);
+  });
+});
