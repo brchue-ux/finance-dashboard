@@ -63,5 +63,9 @@ describe("backend dev port", () => {
       distinctPorts.size,
       `committed port defaults disagree: ${JSON.stringify(ports)}`,
     ).toBe(1);
+    expect(
+      [...distinctPorts][0],
+      `committed port defaults agree with each other but not with the real convention, 3011: ${JSON.stringify(ports)}`,
+    ).toBe(3011);
   });
 });
