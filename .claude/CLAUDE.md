@@ -93,9 +93,10 @@ order is the real protection. Back up first, then prove the result with
 `backend/db/verify-money-cents.ts --before <backup>` — it requires the pre-migration copy by
 design.
 
-**Known-open issue — port 3001 vs 3011.** The documented and deployed port is **3011**, but
-`backend/package.json`'s `dev`/`start` scripts and both `.env.example` files still say 3001.
-Deliberately not fixed yet; pass `--port 3011` explicitly and don't lose an hour to it.
+**Backend port convention: 3011.** All committed defaults (`backend/package.json`'s `dev`/`start`
+scripts, both `.env.example` files, and the `BETTER_AUTH_URL`/`auth.ts` fallback) agree on 3011;
+3001 is held by an unrelated service on this host. `backend/lib/dev-port.test.ts` guards this
+from drifting apart again.
 
 Full detail, every commit hash, and every fixed bug for the above: `.claude/CHANGELOG.md`.
 
