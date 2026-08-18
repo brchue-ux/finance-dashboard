@@ -62,6 +62,45 @@ Two silent-data-loss incidents happened in ONE night against the REAL database. 
   refuses. **PowerShell is not installed on this host** (no `pwsh`/`powershell` binary), so the
   `.ps1` twin was reviewed line-by-line against the verified bash logic but could not be executed.
 
+## 2026-08-03 — Cents migration self-lock fixed, reclaim failure downgraded to non-fatal, tracing root pinned (`2012aa2`)
+
+*Written 2026-08-17, deliberately deferred from 2026-08-03 by captain decision: this changelog
+records verified-live outcomes, and at merge time (PR #7, 16:31) the work was neither landed
+against the real database nor deployed. Both preconditions have since been checked by firstmate —
+see the deployment note at the end of this entry for the one nuance that doesn't fully close.*
+
+- **The migration deadlocked against itself.** `db/migrate-money-to-cents.ts` read each table's
+  current schema (via `sqlite_master`) from *inside* the same write transaction it used to rebuild
+  that table, so the schema read blocked on a lock the transaction itself held. The fix hoists all
+  three schema reads above the write transaction, before any lock is taken.
+- **A post-commit page-reclaim failure was being reported as if the whole migration had failed.**
+  After the migration's write transaction commits successfully, a separate step reclaims freed
+  SQLite pages; if that reclaim step fails, the old wording surfaced it as a migration failure
+  indistinguishable from a failed conversion. That phrasing invites exactly the wrong response —
+  restoring from backup — and at that point the data is already correctly converted and committed;
+  restoring from backup would have thrown away good, already-converted rows to "fix" a problem
+  that was never in the converted data at all. The fix reports the migration as committed and logs
+  the reclaim failure separately as a non-fatal follow-up, so an operator reading the output is
+  pointed at the right remedy (retry the reclaim) instead of the wrong one (restore and re-migrate).
+- **`backend/next.config.ts` now pins `outputFileTracingRoot`.** Without an explicit pin, Next
+  infers the standalone build's tracing root from the nearest lockfile it finds walking upward —
+  which, on this host, resolves outside the repo. That put the standalone artifact at a path the
+  systemd unit didn't expect. Pinning the root to the repo makes the artifact location depend only
+  on the repo, not on what happens to sit above it on this particular machine.
+
+**Deployment status, verified 2026-08-17 — read carefully, this is not a clean "all verified" close:**
+the migration itself ran against the real database and was verified independently (per the DB
+safety protocol — backup, migrate, `verify-money-cents.ts --before <backup>`; that verification
+output is never quoted here, it's real financial data). That part is genuinely live. The tracing
+pin's *behavior* has also been exercised in production, but by coincidence rather than by a rebuild
+of this commit: the currently-running standalone build was produced on 2026-08-03 at 15:06, with
+the fix already applied in the working tree but not yet committed, and the running artifact sits at
+the path the pin produces. **The committed tree itself has never been rebuilt** — the commit landed
+at 16:31, 85 minutes after that build was made. The service has been up since 2026-08-14 with zero
+restarts, and a restart alone doesn't rebuild anything. So the next `npm run build &&
+systemctl --user restart wayfinder-backend` is the first one that will actually exercise the
+pin as committed, not just as it was staged when the running artifact was built.
+
 ## 2026-07-28 — Ledger money stored as integer cents, part 1 of 2 (`fm/budget-cents`)
 
 - **The ten money columns in `backend/db/money-columns.ts` now store integer cents.** Float
