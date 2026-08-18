@@ -87,6 +87,9 @@ verification is impossible without the values it started from.
 - `backend/lib/web-origins.test.ts` parses `frontend/package.json` and asserts every expo-start
   script names an explicit `--port` **and** that each port is trusted. Add an expo script without a
   port, or on a new port, and it fails until `DEV_ORIGINS` agrees — do not hardcode a port there.
+- `backend/lib/dev-port.test.ts` parses `backend/package.json`'s `dev`/`start` scripts, both
+  `.env.example` files, and `auth.ts`'s resolved `BETTER_AUTH_URL` fallback, and asserts they all
+  agree on one port (3011) — the committed-defaults counterpart to `web-origins.test.ts` above.
 
 ## CI — `.github/workflows/ci.yml`
 

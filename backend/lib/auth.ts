@@ -34,7 +34,7 @@ export const auth = betterAuth({
   trustedOrigins: ["finance-dashboard://", ...webOrigins()],
   plugins: [expo()],
   secret: process.env.BETTER_AUTH_SECRET!,
-  baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3001",
+  baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3011",
 });
 
 export type Session = typeof auth.$Infer.Session;
